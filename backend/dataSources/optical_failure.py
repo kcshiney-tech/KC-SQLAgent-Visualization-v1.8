@@ -16,19 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 # 集群映射函数
-def get_cluster_info(hostname: str, is_agg: bool = False) -> tuple:
+def get_cluster_info(hostname: str, is_tor: bool = False, is_agg: bool = False) -> tuple:
     """
     根据主机名确定集群名和客户名称
     
     Args:
         hostname (str): 主机名
+        is_tor (bool): 是否为TOR设备
         is_agg (bool): 是否为AGG设备
         
     Returns:
         tuple: (cluster_name, customer_name)
     """
-    if not hostname:
-        return ("", "")  # 没提取出来的集群名标记为空
+    if not hostname or hostname == "no-data":
+        return ("", "")  # 没匹配上集群名的，集群和客户处为空
     
     # 已知的集群映射
     cluster_mapping = {
@@ -41,9 +42,16 @@ def get_cluster_info(hostname: str, is_agg: bool = False) -> tuple:
     # 检查是否匹配已知的集群
     for prefix, (cluster_name, customer_name) in cluster_mapping.items():
         if hostname.startswith(prefix):
-            # 如果是AGG设备，添加"AGG下联-"前缀
-            if is_agg:
-                cluster_name = f"AGG下联-{cluster_name}"
+            # 处理重复字符的情况，如QHQHYD0x -> QHYD0x
+            if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
+                cluster_name = cluster_name[2:]
+            
+            # 根据设备类型添加前缀
+            if is_tor:
+                cluster_name = f"ROCE-TOR上联-{cluster_name}"
+            elif is_agg:
+                cluster_name = f"ROCE-AGG下联-{cluster_name}"
+                
             return (cluster_name, customer_name)
     
     # 对于其他主机名，提取前两个部分作为集群名
@@ -54,16 +62,25 @@ def get_cluster_info(hostname: str, is_agg: bool = False) -> tuple:
     if tor_match:
         part1, part2, number = tor_match.groups()
         cluster_name = f"{part1}{part2}0{number[-1]}"
-        return (cluster_name, "")  # TOR设备直接返回集群名
+        # 处理重复字符的情况
+        if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
+            cluster_name = cluster_name[2:]
+        # TOR设备添加"ROCE-TOR上联-"前缀
+        if is_tor:
+            cluster_name = f"ROCE-TOR上联-{cluster_name}"
+        return (cluster_name, "no-data")
     elif agg_match:
         part1, part2, number = agg_match.groups()
         cluster_name = f"{part1}{part2}0{number[-1]}"
-        # AGG设备添加"AGG下联-"前缀
+        # 处理重复字符的情况
+        if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
+            cluster_name = cluster_name[2:]
+        # AGG设备添加"ROCE-AGG下联-"前缀
         if is_agg:
-            cluster_name = f"AGG下联-{cluster_name}"
-        return (cluster_name, "")
+            cluster_name = f"ROCE-AGG下联-{cluster_name}"
+        return (cluster_name, "no-data")
     
-    # 没提取出来的集群名标记为空
+    # 没匹配上集群名的，集群和客户处为空
     return ("", "")
 
 
@@ -250,9 +267,10 @@ def query_event_monitor_demo():
             logger.error(f"查询失败: {e}")
             return {"total": 0, "data": []}
 
-    # 最近30天
+    # 集中设置时间范围
+    days = 90  # 可以根据需要调整
     end = datetime.now()
-    start = (end - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (end - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
     logger.info(f"查询时间范围: {start} 至 {end}")
 
     event_type = "NetworkDeviceInterface"
@@ -268,26 +286,30 @@ def query_event_monitor_demo():
         limit=None  # 不限制数量
     )
 
+    
+
     # 处理数据
     processed_data = []
     # 用于聚合相同记录的字典
     aggregated_data = {}
     
     for event in result["data"]:
-        # 筛选主机名包含-ROCE_TOR-0x或-ROCE_AGG-0x的记录
-        hostname = event.get("hostname", "")
-        remote_hostname = event.get("remote_hostname", "")
+        # # 获取NOC工单信息
+        # noc_case = event.get("noc_case")
+        # # 确保noc_case不是None
+        # if noc_case is None:
+        #     noc_case = {}
+        # noc_case_id = noc_case.get("noc_case_id", "")
+        # outsource_ids = noc_case.get("outsource_ids", "")
         
-        # 检查是否一端是TOR，另一端是AGG
-        is_tor_agg_pair = (
-            re.search(r'-ROCE_TOR-0\d', hostname) and re.search(r'-ROCE_AGG-0\d', remote_hostname)
-        ) or (
-            re.search(r'-ROCE_AGG-0\d', hostname) and re.search(r'-ROCE_TOR-0\d', remote_hostname)
-        )
-        
-        if not is_tor_agg_pair:
-            continue
-            
+        # # 只有当NOC工单和外包工单都不为空时，才进行处理
+        # if not noc_case_id or not outsource_ids:
+        #     continue
+
+        # 获取主机名
+        hostname = event.get("hostname", "non-data")
+        remote_hostname = event.get("remote_hostname", "non-data")
+
         # 提取所需字段
         starts_at = event.get("starts_at")
         if starts_at:
@@ -300,53 +322,94 @@ def query_event_monitor_demo():
             if starts_at:
                 date_str = starts_at.date().isoformat()
             else:
-                date_str = "no_data"
+                date_str = "non-data"
         else:
-            date_str = "no_data"
+            date_str = "non-data"
             
         # 获取光模块信息
-        optical_module = event.get("optical_module", {})
+        optical_module = event.get("optical_module")
+        if optical_module is None:
+            optical_module = {}
         
-        # 确定哪一端是TOR，哪一端是AGG
-        if re.search(r'-ROCE_TOR-0\d', hostname):
-            tor_hostname, agg_hostname = hostname, remote_hostname
-            tor_idc, agg_idc = event.get("device_idc", "no_data"), event.get("remote_device_idc", "no_data")
-            tor_module_name, agg_module_name = optical_module.get("module_name", "no_data"), optical_module.get("remote_module_name", "no_data")
-            tor_module_vendor, agg_module_vendor = optical_module.get("module_vendor", "no_data"), optical_module.get("remote_module_vendor", "no_data")
-        else:
-            tor_hostname, agg_hostname = remote_hostname, hostname
-            tor_idc, agg_idc = event.get("remote_device_idc", "no_data"), event.get("device_idc", "no_data")
-            tor_module_name, agg_module_name = optical_module.get("remote_module_name", "no_data"), optical_module.get("module_name", "no_data")
-            tor_module_vendor, agg_module_vendor = optical_module.get("remote_module_vendor", "no_data"), optical_module.get("module_vendor", "no_data")
+        # 检查是否一端是TOR，另一端是AGG
+        is_tor_agg_pair = (
+            re.search(r'-ROCE_TOR-0\d', hostname) and re.search(r'-ROCE_AGG-0\d', remote_hostname)
+        ) or (
+            re.search(r'-ROCE_AGG-0\d', hostname) and re.search(r'-ROCE_TOR-0\d', remote_hostname)
+        )
         
-        # 获取集群信息（两端使用相同的集群名）
-        cluster_name, _ = get_cluster_info(tor_hostname)
-        agg_cluster_name, _ = get_cluster_info(agg_hostname, is_agg=True)
-        
-        # 为TOR端设备创建记录
-        if tor_module_name != "no_data" or tor_module_vendor != "no_data":
-            key = (date_str, tor_module_name, tor_module_vendor, tor_idc, cluster_name)
+        if is_tor_agg_pair:
+            # 确定哪一端是TOR，哪一端是AGG
+            if re.search(r'-ROCE_TOR-0\d', hostname):
+                tor_hostname, agg_hostname = hostname, remote_hostname
+                tor_idc, agg_idc = event.get("device_idc", "non-data"), event.get("remote_device_idc", "non-data")
+                tor_module_name, agg_module_name = optical_module.get("module_name", "non-data"), optical_module.get("remote_module_name", "non-data")
+                tor_module_vendor, agg_module_vendor = optical_module.get("module_vendor", "non-data"), optical_module.get("remote_module_vendor", "non-data")
+            else:
+                tor_hostname, agg_hostname = remote_hostname, hostname
+                tor_idc, agg_idc = event.get("remote_device_idc", "non-data"), event.get("device_idc", "non-data")
+                tor_module_name, agg_module_name = optical_module.get("remote_module_name", "non-data"), optical_module.get("module_name", "non-data")
+                tor_module_vendor, agg_module_vendor = optical_module.get("remote_module_vendor", "non-data"), optical_module.get("module_vendor", "non-data")
+            
+            # 获取集群信息和客户信息
+            tor_cluster_name, tor_customer_name = get_cluster_info(tor_hostname, is_tor=True)
+            agg_cluster_name, _ = get_cluster_info(agg_hostname, is_agg=True)
+            # ROCE-AGG下联的集群所属的客户和它对应的ROCE-TOR上联的客户一样
+            agg_customer_name = tor_customer_name
+            
+            # 确保所有字段都有值，如果没有则替换为"non-data"
+            tor_module_name = tor_module_name if tor_module_name else "non-data"
+            tor_module_vendor = tor_module_vendor if tor_module_vendor else "non-data"
+            tor_idc = tor_idc if tor_idc else "non-data"
+            tor_cluster_name = tor_cluster_name if tor_cluster_name else "non-data"
+            tor_customer_name = tor_customer_name if tor_customer_name else "non-data"
+            
+            agg_module_name = agg_module_name if agg_module_name else "non-data"
+            agg_module_vendor = agg_module_vendor if agg_module_vendor else "non-data"
+            agg_idc = agg_idc if agg_idc else "non-data"
+            agg_cluster_name = agg_cluster_name if agg_cluster_name else "non-data"
+            agg_customer_name = agg_customer_name if agg_customer_name else "non-data"
+            
+            # 为TOR端设备创建记录
+            key = (date_str, tor_module_name, tor_module_vendor, tor_idc, tor_cluster_name, tor_customer_name)
             if key in aggregated_data:
                 aggregated_data[key] += 1
             else:
                 aggregated_data[key] = 1
-        
-        # 为AGG端设备创建记录（集群名添加"AGG下联-"前缀）
-        if agg_module_name != "no_data" or agg_module_vendor != "no_data":
-            key = (date_str, agg_module_name, agg_module_vendor, agg_idc, agg_cluster_name)
+            
+            # 为AGG端设备创建记录
+            key = (date_str, agg_module_name, agg_module_vendor, agg_idc, agg_cluster_name, agg_customer_name)
+            if key in aggregated_data:
+                aggregated_data[key] += 1
+            else:
+                aggregated_data[key] = 1
+        else:
+            # 对于非TOR-AGG对的设备，记录基本信息，集群和客户为空
+            idc = event.get("device_idc", "non-data")
+            module_name = optical_module.get("module_name", "non-data")
+            module_vendor = optical_module.get("module_vendor", "non-data")
+            
+            # 确保所有字段都有值，如果没有则替换为"non-data"
+            module_name = module_name if module_name else "non-data"
+            module_vendor = module_vendor if module_vendor else "non-data"
+            idc = idc if idc else "non-data"
+            
+            # 为设备创建记录
+            key = (date_str, module_name, module_vendor, idc, "", "")
             if key in aggregated_data:
                 aggregated_data[key] += 1
             else:
                 aggregated_data[key] = 1
     
     # 转换聚合数据为列表
-    for (date, model, vendor, idc, cluster), count in aggregated_data.items():
+    for (date, model, vendor, idc, cluster, customer), count in aggregated_data.items():
         processed_data.append({
             "日期": date,
             "型号": model,
             "厂商": vendor,
             "机房": idc,
             "集群": cluster,
+            "客户": customer,
             "故障数": count
         })
     
