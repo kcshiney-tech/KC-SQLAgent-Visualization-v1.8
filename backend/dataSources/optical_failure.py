@@ -5,13 +5,66 @@
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
-from mongodb_connector import connect_mongodb, get_database
+from backend.dataSources.mongodb_connector import connect_mongodb, get_database
+import re
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# 集群映射函数
+def get_cluster_info(hostname: str, is_agg: bool = False) -> tuple:
+    """
+    根据主机名确定集群名和客户名称
+    
+    Args:
+        hostname (str): 主机名
+        is_agg (bool): 是否为AGG设备
+        
+    Returns:
+        tuple: (cluster_name, customer_name)
+    """
+    if not hostname:
+        return ("", "")  # 没提取出来的集群名标记为空
+    
+    # 已知的集群映射
+    cluster_mapping = {
+        "QH-QHDX-AZ-ROCE_TOR-02": ("QHDX02", "小米"),
+        "NB-LT-AZ-ROCE_TOR-01": ("NBLT01", "百川"),
+        "QY-YD-DC-ROCE_TOR-05": ("QYYD05", "月暗"),
+        "QY-ZNJ-DC-ROCE_TOR-01": ("QYZNJ01", "云启")
+    }
+    
+    # 检查是否匹配已知的集群
+    for prefix, (cluster_name, customer_name) in cluster_mapping.items():
+        if hostname.startswith(prefix):
+            # 如果是AGG设备，添加"AGG下联-"前缀
+            if is_agg:
+                cluster_name = f"AGG下联-{cluster_name}"
+            return (cluster_name, customer_name)
+    
+    # 对于其他主机名，提取前两个部分作为集群名
+    # 例如: NB-LT-AZ-ROCE_TOR-01-xxx -> NBLT01
+    tor_match = re.match(r'^([A-Z]+)-([A-Z0-9]+)-[A-Z0-9-]*ROCE_TOR-(\d+)', hostname)
+    agg_match = re.match(r'^([A-Z]+)-([A-Z0-9]+)-[A-Z0-9-]*ROCE_AGG-(\d+)', hostname)
+    
+    if tor_match:
+        part1, part2, number = tor_match.groups()
+        cluster_name = f"{part1}{part2}0{number[-1]}"
+        return (cluster_name, "")  # TOR设备直接返回集群名
+    elif agg_match:
+        part1, part2, number = agg_match.groups()
+        cluster_name = f"{part1}{part2}0{number[-1]}"
+        # AGG设备添加"AGG下联-"前缀
+        if is_agg:
+            cluster_name = f"AGG下联-{cluster_name}"
+        return (cluster_name, "")
+    
+    # 没提取出来的集群名标记为空
+    return ("", "")
 
 
 # ==========================================
@@ -138,7 +191,7 @@ def query_event_monitor_demo():
                           database=event_monitor_mongo_db,
                           username=event_monitor_mongo_user, password=event_monitor_mongo_pass):
         logger.error("事件监控数据库连接失败")
-        return
+        return []
 
     # 通用查询方法（简化版）
     def query_event_monitor_event_list(
@@ -197,14 +250,14 @@ def query_event_monitor_demo():
             logger.error(f"查询失败: {e}")
             return {"total": 0, "data": []}
 
-    # 最近7天
+    # 最近30天
     end = datetime.now()
-    start = (end - timedelta(days=20)).replace(hour=0, minute=0, second=0, microsecond=0)
-    print("查询时间范围:", start, "至", end)
+    start = (end - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+    logger.info(f"查询时间范围: {start} 至 {end}")
 
     event_type = "NetworkDeviceInterface"
-    is_finished = True  # True表示只查询已结束的事件, False表示只查询未结束的事件
-    is_one_click_finish = False  # None表示不区分是否一键完成的事件, True表示只查询一键完成的事件, False表示只查询非一键完成的事件
+    is_finished = True  # True表示只查询已结束的事件
+    is_one_click_finish = False  # False表示只查询非一键完成的事件
 
     result = query_event_monitor_event_list(
         event_type=event_type,
@@ -215,16 +268,90 @@ def query_event_monitor_demo():
         limit=None  # 不限制数量
     )
 
-    print(result["data"])
-
+    # 处理数据
+    processed_data = []
+    # 用于聚合相同记录的字典
+    aggregated_data = {}
+    
     for event in result["data"]:
-        print("事件ID:", event.get("event_id"),
-              "事件类型:", event.get("event_type"),
-              "开始时间:", event.get("starts_at"))
-        print("光模块信息:", event.get("optical_module"))
-        print()
-
-    print("总记录数:", result["total"])
+        # 筛选主机名包含-ROCE_TOR-0x或-ROCE_AGG-0x的记录
+        hostname = event.get("hostname", "")
+        remote_hostname = event.get("remote_hostname", "")
+        
+        # 检查是否一端是TOR，另一端是AGG
+        is_tor_agg_pair = (
+            re.search(r'-ROCE_TOR-0\d', hostname) and re.search(r'-ROCE_AGG-0\d', remote_hostname)
+        ) or (
+            re.search(r'-ROCE_AGG-0\d', hostname) and re.search(r'-ROCE_TOR-0\d', remote_hostname)
+        )
+        
+        if not is_tor_agg_pair:
+            continue
+            
+        # 提取所需字段
+        starts_at = event.get("starts_at")
+        if starts_at:
+            # 只保留日期部分
+            if isinstance(starts_at, str):
+                try:
+                    starts_at = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                except:
+                    starts_at = None
+            if starts_at:
+                date_str = starts_at.date().isoformat()
+            else:
+                date_str = "no_data"
+        else:
+            date_str = "no_data"
+            
+        # 获取光模块信息
+        optical_module = event.get("optical_module", {})
+        
+        # 确定哪一端是TOR，哪一端是AGG
+        if re.search(r'-ROCE_TOR-0\d', hostname):
+            tor_hostname, agg_hostname = hostname, remote_hostname
+            tor_idc, agg_idc = event.get("device_idc", "no_data"), event.get("remote_device_idc", "no_data")
+            tor_module_name, agg_module_name = optical_module.get("module_name", "no_data"), optical_module.get("remote_module_name", "no_data")
+            tor_module_vendor, agg_module_vendor = optical_module.get("module_vendor", "no_data"), optical_module.get("remote_module_vendor", "no_data")
+        else:
+            tor_hostname, agg_hostname = remote_hostname, hostname
+            tor_idc, agg_idc = event.get("remote_device_idc", "no_data"), event.get("device_idc", "no_data")
+            tor_module_name, agg_module_name = optical_module.get("remote_module_name", "no_data"), optical_module.get("module_name", "no_data")
+            tor_module_vendor, agg_module_vendor = optical_module.get("remote_module_vendor", "no_data"), optical_module.get("module_vendor", "no_data")
+        
+        # 获取集群信息（两端使用相同的集群名）
+        cluster_name, _ = get_cluster_info(tor_hostname)
+        agg_cluster_name, _ = get_cluster_info(agg_hostname, is_agg=True)
+        
+        # 为TOR端设备创建记录
+        if tor_module_name != "no_data" or tor_module_vendor != "no_data":
+            key = (date_str, tor_module_name, tor_module_vendor, tor_idc, cluster_name)
+            if key in aggregated_data:
+                aggregated_data[key] += 1
+            else:
+                aggregated_data[key] = 1
+        
+        # 为AGG端设备创建记录（集群名添加"AGG下联-"前缀）
+        if agg_module_name != "no_data" or agg_module_vendor != "no_data":
+            key = (date_str, agg_module_name, agg_module_vendor, agg_idc, agg_cluster_name)
+            if key in aggregated_data:
+                aggregated_data[key] += 1
+            else:
+                aggregated_data[key] = 1
+    
+    # 转换聚合数据为列表
+    for (date, model, vendor, idc, cluster), count in aggregated_data.items():
+        processed_data.append({
+            "日期": date,
+            "型号": model,
+            "厂商": vendor,
+            "机房": idc,
+            "集群": cluster,
+            "故障数": count
+        })
+    
+    logger.info(f"处理完成，共生成 {len(processed_data)} 条记录")
+    return processed_data
 
 # ==========================================
 # ROCE事件查询

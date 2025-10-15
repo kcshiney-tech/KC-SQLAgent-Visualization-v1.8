@@ -159,3 +159,36 @@ class APIDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info(f"API load completed for {self.api_url} (status=0)")
+
+
+class OpticalFailureDataSourceLoader(DataSourceLoader):
+    """Loader for optical failure data from MongoDB."""
+    
+    def __init__(self, table_name: str = "事件监控-光模块故障表"):
+        try:
+            self.table_name = table_name
+            logger.debug(f"Initialized OpticalFailureDataSourceLoader with table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug("Loading optical failure data from MongoDB")
+            # 导入查询函数
+            from backend.dataSources.optical_failure import query_event_monitor_demo
+            
+            # 获取数据
+            data = query_event_monitor_demo()
+            
+            if not data:
+                logger.warning("No optical failure data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from MongoDB")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load optical failure data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("Optical failure data load completed (status=0)")

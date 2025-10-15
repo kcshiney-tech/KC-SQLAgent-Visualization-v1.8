@@ -2,7 +2,7 @@
 import sqlite3
 import logging
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Sequence
 from datetime import datetime, date
 from backend.data_loader import DataSourceLoader
 
@@ -109,7 +109,7 @@ class DatabaseBuilder:
         else:
             return "TEXT"
 
-    def build_database(self, data_sources: List[DataSourceLoader], rebuild: bool = True) -> Dict[str, Any]:
+    def build_database(self, data_sources: Sequence[DataSourceLoader], rebuild: bool = True) -> Dict[str, Any]:
         """
         Build or update SQLite database from data sources.
 
@@ -243,5 +243,3 @@ if __name__ == "__main__":
     builder = DatabaseBuilder("custom_database.db")
     result = builder.build_database(data_sources, rebuild=True)
     print(f"Database build completed with status: {result['status']}, errors: {result['errors']}")
-
-    
