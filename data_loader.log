@@ -1,0 +1,29 @@
+2025-09-01 16:22:29,003 - data_loader - DEBUG - Initialized ExcelDataSourceLoader for 20250813光模块分析.xlsx with sheets: [('工作表6', '光模块故障表')]
+2025-09-01 16:22:29,004 - __main__ - DEBUG - Initialized DatabaseBuilder with db_path: custom_database.db
+2025-09-01 16:22:29,005 - __main__ - DEBUG - Processing data source: <data_loader.ExcelDataSourceLoader object at 0x00000224539FC830>
+2025-09-01 16:22:29,005 - data_loader - DEBUG - Loading Excel file: 20250813光模块分析.xlsx
+2025-09-01 16:22:36,369 - data_loader - DEBUG - Reading sheet: 工作表6
+2025-09-01 16:22:43,212 - data_loader - DEBUG - Columns in sheet 工作表6: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1=故障/总数', '故障率2=故障/在线']
+2025-09-01 16:22:43,217 - data_loader - DEBUG - Loaded sheet 工作表6 as table 光模块故障表 with 174 records
+2025-09-01 16:22:43,217 - data_loader - INFO - Loaded Excel file 20250813光模块分析.xlsx with sheets: ['工作表6'] (status=0)
+2025-09-01 16:22:43,218 - data_loader - INFO - Excel load completed for 20250813光模块分析.xlsx (status=0)
+2025-09-01 16:22:43,218 - __main__ - DEBUG - Sample record columns: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1=故障/总数', '故障率2=故障/在线']
+2025-09-01 16:22:43,218 - __main__ - DEBUG - Sanitized name: 日期 -> 日期
+2025-09-01 16:22:43,218 - __main__ - DEBUG - Sanitized name: 型号 -> 型号
+2025-09-01 16:22:43,222 - __main__ - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-09-01 16:22:43,222 - __main__ - DEBUG - Sanitized name: 总数量 -> 总数量
+2025-09-01 16:22:43,223 - __main__ - DEBUG - Sanitized name: 在线数 -> 在线数
+2025-09-01 16:22:43,223 - __main__ - DEBUG - Sanitized name: 故障数 -> 故障数
+2025-09-01 16:22:43,223 - __main__ - DEBUG - Sanitized name: 故障率1=故障/总数 -> 故障率1_故障_总数
+2025-09-01 16:22:43,223 - __main__ - DEBUG - Sanitized name: 故障率2=故障/在线 -> 故障率2_故障_在线
+2025-09-01 16:22:43,244 - __main__ - INFO - Rebuilt table 光模块故障表 from 光模块故障表
+2025-09-01 16:22:43,245 - __main__ - DEBUG - Sanitized name: 日期 -> 日期
+2025-09-01 16:22:43,245 - __main__ - DEBUG - Sanitized name: 型号 -> 型号
+2025-09-01 16:22:43,245 - __main__ - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-09-01 16:22:43,246 - __main__ - DEBUG - Sanitized name: 总数量 -> 总数量
+2025-09-01 16:22:43,246 - __main__ - DEBUG - Sanitized name: 在线数 -> 在线数
+2025-09-01 16:22:43,246 - __main__ - DEBUG - Sanitized name: 故障数 -> 故障数
+2025-09-01 16:22:43,247 - __main__ - DEBUG - Sanitized name: 故障率1=故障/总数 -> 故障率1_故障_总数
+2025-09-01 16:22:43,247 - __main__ - DEBUG - Sanitized name: 故障率2=故障/在线 -> 故障率2_故障_在线
+2025-09-01 16:22:43,250 - __main__ - INFO - Inserted 174 records into table 光模块故障表
+2025-09-01 16:22:43,266 - __main__ - INFO - Database built/updated at custom_database.db (rebuild=True, status=0)

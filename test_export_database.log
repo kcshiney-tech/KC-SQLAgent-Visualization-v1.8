@@ -1,0 +1,6 @@
+2025-09-01 16:23:32,585 - __main__ - DEBUG - Output directory ensured: output
+2025-09-01 16:23:32,587 - __main__ - INFO - Found 1 tables in custom_database.db: ['光模块故障表']
+2025-09-01 16:23:32,996 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-09-01 16:23:32,999 - __main__ - DEBUG - Read 174 rows from table 光模块故障表
+2025-09-01 16:23:33,058 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20250901_162332.xlsx
+2025-09-01 16:23:33,157 - __main__ - INFO - Database exported to output\database_export_20250901_162332.xlsx (status=0)

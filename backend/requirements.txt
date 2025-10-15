@@ -1,0 +1,11 @@
+
+langchain
+langchain-openai
+langchain-community
+langgraph
+pandas
+plotly
+sqlite3
+python-dotenv
+pytest
+pydantic
