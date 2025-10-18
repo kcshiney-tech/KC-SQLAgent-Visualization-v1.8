@@ -2,9 +2,12 @@
 import sqlite3
 import logging
 import re
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import List, Dict, Any, Sequence
 from datetime import datetime, date
-from backend.data_loader import DataSourceLoader
+from backend.data_loader import DataSourceLoader,OpticalFailureDataSourceLoader
 
 # Configure logging
 logging.basicConfig(
@@ -236,9 +239,10 @@ class DatabaseBuilder:
 if __name__ == "__main__":
     from data_loader import ExcelDataSourceLoader, APIDataSourceLoader
     data_sources = [
-        ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表6", "光模块故障表")])
+        # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表6", "光模块故障表")]),
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表5", "光模块故障表"),("工作表6", "光模块故障表")])
         # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users"
+        OpticalFailureDataSourceLoader()
     ]
     builder = DatabaseBuilder("custom_database.db")
     result = builder.build_database(data_sources, rebuild=True)
