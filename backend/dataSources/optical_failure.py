@@ -286,7 +286,6 @@ def query_event_monitor_demo():
         limit=None  # 不限制数量
     )
 
-    
 
     # 处理数据
     processed_data = []
@@ -294,37 +293,52 @@ def query_event_monitor_demo():
     aggregated_data = {}
     
     for event in result["data"]:
-        # # 获取NOC工单信息
-        # noc_case = event.get("noc_case")
-        # # 确保noc_case不是None
-        # if noc_case is None:
-        #     noc_case = {}
-        # noc_case_id = noc_case.get("noc_case_id", "")
-        # outsource_ids = noc_case.get("outsource_ids", "")
+        # 获取NOC工单信息
+        noc_case = event.get("noc_case")
+        # 确保noc_case不是None
+        if noc_case is None:
+            noc_case = {}
+        noc_case_id = noc_case.get("noc_case_id", "")
+        outsource_ids = noc_case.get("outsource_ids", "")
         
-        # # 只有当NOC工单和外包工单都不为空时，才进行处理
-        # if not noc_case_id or not outsource_ids:
-        #     continue
+        # 只有当NOC工单和外包工单都不为空时，才进行处理
+        if not noc_case_id or not outsource_ids:
+            continue
 
         # 获取主机名
         hostname = event.get("hostname", "non-data")
         remote_hostname = event.get("remote_hostname", "non-data")
 
-        # 提取所需字段
+        # 提取事件相关信息
+        event_id = event.get("event_id", "non-data")
+        event_type = event.get("event_type", "non-data")
+        event_name = event.get("event_name", "non-data")
+        
+        # 提取时间字段
         starts_at = event.get("starts_at")
-        if starts_at:
-            # 只保留日期部分
-            if isinstance(starts_at, str):
-                try:
-                    starts_at = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
-                except:
-                    starts_at = None
-            if starts_at:
-                date_str = starts_at.date().isoformat()
-            else:
-                date_str = "non-data"
-        else:
-            date_str = "non-data"
+        claimed_at = event.get("claimed_at")
+        case_at = event.get("case_at")
+        operation_at = event.get("operation_at")
+        isolate_at = event.get("isolate_at")
+        ends_at = event.get("ends_at")
+        
+        # 格式化时间字段
+        def format_datetime(dt):
+            if dt:
+                if isinstance(dt, str):
+                    try:
+                        dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+                    except:
+                        return "non-data"
+                return dt.isoformat()
+            return "non-data"
+        
+        starts_at_str = format_datetime(starts_at)
+        claimed_at_str = format_datetime(claimed_at)
+        case_at_str = format_datetime(case_at)
+        operation_at_str = format_datetime(operation_at)
+        isolate_at_str = format_datetime(isolate_at)
+        ends_at_str = format_datetime(ends_at)
             
         # 获取光模块信息
         optical_module = event.get("optical_module")
@@ -342,12 +356,12 @@ def query_event_monitor_demo():
             # 确定哪一端是TOR，哪一端是AGG
             if re.search(r'-ROCE_TOR-0\d', hostname):
                 tor_hostname, agg_hostname = hostname, remote_hostname
-                tor_idc, agg_idc = event.get("device_idc", "non-data"), event.get("remote_device_idc", "non-data")
+                tor_interface_name, agg_interface_name = event.get("interface_name", "non-data"), event.get("remote_interface_name", "non-data")
                 tor_module_name, agg_module_name = optical_module.get("module_name", "non-data"), optical_module.get("remote_module_name", "non-data")
                 tor_module_vendor, agg_module_vendor = optical_module.get("module_vendor", "non-data"), optical_module.get("remote_module_vendor", "non-data")
             else:
                 tor_hostname, agg_hostname = remote_hostname, hostname
-                tor_idc, agg_idc = event.get("remote_device_idc", "non-data"), event.get("device_idc", "non-data")
+                tor_interface_name, agg_interface_name = event.get("remote_interface_name", "non-data"), event.get("interface_name", "non-data")
                 tor_module_name, agg_module_name = optical_module.get("remote_module_name", "non-data"), optical_module.get("module_name", "non-data")
                 tor_module_vendor, agg_module_vendor = optical_module.get("remote_module_vendor", "non-data"), optical_module.get("module_vendor", "non-data")
             
@@ -360,57 +374,66 @@ def query_event_monitor_demo():
             # 确保所有字段都有值，如果没有则替换为"non-data"
             tor_module_name = tor_module_name if tor_module_name else "non-data"
             tor_module_vendor = tor_module_vendor if tor_module_vendor else "non-data"
-            tor_idc = tor_idc if tor_idc else "non-data"
+            tor_interface_name = tor_interface_name if tor_interface_name else "non-data"
             tor_cluster_name = tor_cluster_name if tor_cluster_name else "non-data"
             tor_customer_name = tor_customer_name if tor_customer_name else "non-data"
             
             agg_module_name = agg_module_name if agg_module_name else "non-data"
             agg_module_vendor = agg_module_vendor if agg_module_vendor else "non-data"
-            agg_idc = agg_idc if agg_idc else "non-data"
+            agg_interface_name = agg_interface_name if agg_interface_name else "non-data"
             agg_cluster_name = agg_cluster_name if agg_cluster_name else "non-data"
             agg_customer_name = agg_customer_name if agg_customer_name else "non-data"
             
             # 为TOR端设备创建记录
-            key = (date_str, tor_module_name, tor_module_vendor, tor_idc, tor_cluster_name, tor_customer_name)
+            key = (event_id, event_type, event_name, starts_at_str, isolate_at_str, ends_at_str, tor_hostname, tor_interface_name, tor_module_name, tor_module_vendor, tor_cluster_name, tor_customer_name, claimed_at_str, case_at_str, operation_at_str)
             if key in aggregated_data:
                 aggregated_data[key] += 1
             else:
                 aggregated_data[key] = 1
             
             # 为AGG端设备创建记录
-            key = (date_str, agg_module_name, agg_module_vendor, agg_idc, agg_cluster_name, agg_customer_name)
+            key = (event_id, event_type, event_name, starts_at_str, isolate_at_str, ends_at_str, agg_hostname, agg_interface_name, agg_module_name, agg_module_vendor, agg_cluster_name, agg_customer_name, claimed_at_str, case_at_str, operation_at_str)
             if key in aggregated_data:
                 aggregated_data[key] += 1
             else:
                 aggregated_data[key] = 1
         else:
             # 对于非TOR-AGG对的设备，记录基本信息，集群和客户为空
-            idc = event.get("device_idc", "non-data")
+            interface_name = event.get("interface_name", "non-data")
             module_name = optical_module.get("module_name", "non-data")
             module_vendor = optical_module.get("module_vendor", "non-data")
             
             # 确保所有字段都有值，如果没有则替换为"non-data"
+            interface_name = interface_name if interface_name else "non-data"
             module_name = module_name if module_name else "non-data"
             module_vendor = module_vendor if module_vendor else "non-data"
-            idc = idc if idc else "non-data"
             
             # 为设备创建记录
-            key = (date_str, module_name, module_vendor, idc, "", "")
+            key = (event_id, event_type, event_name, starts_at_str, isolate_at_str, ends_at_str, hostname, interface_name, module_name, module_vendor, "", "", claimed_at_str, case_at_str, operation_at_str)
             if key in aggregated_data:
                 aggregated_data[key] += 1
             else:
                 aggregated_data[key] = 1
     
     # 转换聚合数据为列表
-    for (date, model, vendor, idc, cluster, customer), count in aggregated_data.items():
+    for (event_id, event_type, event_name, starts_at, isolate_at, ends_at, hostname, interface_name, module_name, module_vendor, cluster, customer, claimed_at, case_at, operation_at), count in aggregated_data.items():
         processed_data.append({
-            "日期": date,
-            "型号": model,
-            "厂商": vendor,
-            "机房": idc,
+            "事件ID": event_id,
+            "事件类型": event_type,
+            "事件名称": event_name,
+            "开始时间": starts_at,
+            "隔离时间": isolate_at,
+            "结束时间": ends_at,
+            "设备主机名": hostname,
+            "设备端口名称": interface_name,
+            "光模块型号": module_name,
+            "光模块厂商": module_vendor,
             "集群": cluster,
             "客户": customer,
-            "故障数": count
+            "故障数": count,
+            "认领时间": claimed_at,
+            "建单时间": case_at,
+            "操作时间": operation_at
         })
     
     logger.info(f"处理完成，共生成 {len(processed_data)} 条记录")

@@ -76,3 +76,12 @@
 2025-10-15 21:59:31,982 - __main__ - DEBUG - Read 466 rows from table 事件监控-光模块故障表
 2025-10-15 21:59:32,087 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251015_215930.xlsx
 2025-10-15 21:59:32,552 - __main__ - INFO - Database exported to output\database_export_20251015_215930.xlsx (status=0)
+2025-10-18 18:27:19,026 - __main__ - DEBUG - Output directory ensured: output
+2025-10-18 18:27:19,027 - __main__ - INFO - Found 2 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表']
+2025-10-18 18:27:19,395 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-18 18:27:19,400 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-18 18:27:19,428 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251018_182719.xlsx
+2025-10-18 18:27:19,429 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-18 18:27:19,432 - __main__ - DEBUG - Read 11 rows from table 事件监控-光模块故障表
+2025-10-18 18:27:19,439 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251018_182719.xlsx
+2025-10-18 18:27:19,553 - __main__ - INFO - Database exported to output\database_export_20251018_182719.xlsx (status=0)
