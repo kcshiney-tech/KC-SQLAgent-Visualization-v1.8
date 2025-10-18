@@ -192,3 +192,36 @@ class OpticalFailureDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info("Optical failure data load completed (status=0)")
+
+
+class OpticalModuleInventoryDataSourceLoader(DataSourceLoader):
+    """Loader for optical module inventory data from API."""
+    
+    def __init__(self, table_name: str = "光模块在线总数量统计表"):
+        try:
+            self.table_name = table_name
+            logger.debug(f"Initialized OpticalModuleInventoryDataSourceLoader with table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug("Loading optical module inventory data from API")
+            # 导入查询函数
+            from backend.dataSources.optical_module_inventory import query_optical_module_inventory
+            
+            # 获取数据
+            data = query_optical_module_inventory()
+            
+            if not data:
+                logger.warning("No optical module inventory data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from API")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load optical module inventory data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("Optical module inventory data load completed (status=0)")

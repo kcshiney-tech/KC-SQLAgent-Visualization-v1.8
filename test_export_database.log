@@ -112,3 +112,54 @@
 2025-10-18 20:51:22,451 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
 2025-10-18 20:51:22,783 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251018_205121.xlsx
 2025-10-18 20:51:23,789 - __main__ - INFO - Database exported to output\database_export_20251018_205121.xlsx (status=0)
+2025-10-18 23:28:34,860 - __main__ - DEBUG - Output directory ensured: output
+2025-10-18 23:28:34,863 - __main__ - INFO - Found 2 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表']
+2025-10-18 23:28:35,297 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-18 23:28:35,304 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-18 23:28:35,325 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251018_232834.xlsx
+2025-10-18 23:28:35,326 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-18 23:28:35,338 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-18 23:28:35,548 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251018_232834.xlsx
+2025-10-18 23:28:36,021 - __main__ - INFO - Database exported to output\database_export_20251018_232834.xlsx (status=0)
+2025-10-18 23:37:40,659 - __main__ - DEBUG - Output directory ensured: output
+2025-10-18 23:37:40,660 - __main__ - INFO - Found 1 tables in test_optical_module.db: ['光模块在线总数量统计表']
+2025-10-18 23:37:40,843 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-18 23:37:40,847 - __main__ - DEBUG - Read 1642 rows from table 光模块在线总数量统计表
+2025-10-18 23:37:40,915 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251018_233740.xlsx
+2025-10-18 23:37:41,076 - __main__ - INFO - Database exported to output\database_export_20251018_233740.xlsx (status=0)
+2025-10-18 23:41:31,779 - __main__ - DEBUG - Output directory ensured: output
+2025-10-18 23:41:31,781 - __main__ - INFO - Found 1 tables in test_optical_module_inventory.db: ['光模块在线总数量统计表']
+2025-10-18 23:41:32,075 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-18 23:41:32,081 - __main__ - DEBUG - Read 1642 rows from table 光模块在线总数量统计表
+2025-10-18 23:41:32,170 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251018_234131.xlsx
+2025-10-18 23:41:32,381 - __main__ - INFO - Database exported to output\database_export_20251018_234131.xlsx (status=0)
+2025-10-19 00:09:59,059 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 00:09:59,063 - __main__ - INFO - Found 1 tables in test_optical_module_inventory.db: ['光模块在线总数量统计表']
+2025-10-19 00:09:59,287 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-19 00:09:59,292 - __main__ - DEBUG - Read 1642 rows from table 光模块在线总数量统计表
+2025-10-19 00:09:59,360 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_000959.xlsx
+2025-10-19 00:09:59,519 - __main__ - INFO - Database exported to output\database_export_20251019_000959.xlsx (status=0)
+2025-10-19 00:10:16,973 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 00:10:16,977 - __main__ - INFO - Found 3 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表', '光模块在线总数量统计表']
+2025-10-19 00:10:17,436 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-19 00:10:17,440 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-19 00:10:17,480 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251019_001016.xlsx
+2025-10-19 00:10:17,480 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-19 00:10:17,503 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-19 00:10:17,797 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251019_001016.xlsx
+2025-10-19 00:10:17,798 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-19 00:10:17,807 - __main__ - DEBUG - Read 1648 rows from table 光模块在线总数量统计表
+2025-10-19 00:10:17,970 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_001016.xlsx
+2025-10-19 00:10:19,283 - __main__ - INFO - Database exported to output\database_export_20251019_001016.xlsx (status=0)
+2025-10-19 01:03:21,818 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 01:03:21,821 - __main__ - INFO - Found 3 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表', '光模块在线总数量统计表']
+2025-10-19 01:03:22,045 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-19 01:03:22,053 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-19 01:03:22,071 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251019_010321.xlsx
+2025-10-19 01:03:22,072 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-19 01:03:22,084 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-19 01:03:22,263 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251019_010321.xlsx
+2025-10-19 01:03:22,263 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-19 01:03:22,267 - __main__ - DEBUG - Read 1131 rows from table 光模块在线总数量统计表
+2025-10-19 01:03:22,311 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_010321.xlsx
+2025-10-19 01:03:22,842 - __main__ - INFO - Database exported to output\database_export_20251019_010321.xlsx (status=0)
