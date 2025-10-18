@@ -7,7 +7,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import List, Dict, Any, Sequence
 from datetime import datetime, date
-from backend.data_loader import DataSourceLoader,OpticalFailureDataSourceLoader,OpticalModuleInventoryDataSourceLoader
+from backend.data_loader import DataSourceLoader,OpticalFailureDataSourceLoader,OpticalModuleInventoryDataSourceLoader,RoceEventDataSourceLoader
 
 # Configure logging
 logging.basicConfig(
@@ -237,13 +237,14 @@ class DatabaseBuilder:
             conn.close()
 
 if __name__ == "__main__":
-    from data_loader import ExcelDataSourceLoader, APIDataSourceLoader, OpticalFailureDataSourceLoader, OpticalModuleInventoryDataSourceLoader
+    from data_loader import ExcelDataSourceLoader, APIDataSourceLoader, OpticalFailureDataSourceLoader, OpticalModuleInventoryDataSourceLoader, RoceEventDataSourceLoader
     data_sources = [
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表6", "光模块故障表")]),
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表5", "光模块故障表"),("工作表6", "光模块故障表")])
         # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users"
         OpticalFailureDataSourceLoader(),
-        OpticalModuleInventoryDataSourceLoader()
+        # OpticalModuleInventoryDataSourceLoader(),
+        RoceEventDataSourceLoader()
     ]
     builder = DatabaseBuilder("custom_database.db")
     result = builder.build_database(data_sources, rebuild=True)

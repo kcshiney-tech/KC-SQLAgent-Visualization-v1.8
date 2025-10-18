@@ -225,3 +225,36 @@ class OpticalModuleInventoryDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info("Optical module inventory data load completed (status=0)")
+
+
+class RoceEventDataSourceLoader(DataSourceLoader):
+    """Loader for ROCE event data from MongoDB."""
+    
+    def __init__(self, table_name: str = "ROCE网络事件-光模块故障表"):
+        try:
+            self.table_name = table_name
+            logger.debug(f"Initialized RoceEventDataSourceLoader with table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug("Loading ROCE event data from MongoDB")
+            # 导入查询函数
+            from backend.dataSources.roce_event import query_roce_network_event_demo
+            
+            # 获取数据
+            data = query_roce_network_event_demo()
+            
+            if not data:
+                logger.warning("No ROCE event data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from MongoDB")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load ROCE event data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("ROCE event data load completed (status=0)")

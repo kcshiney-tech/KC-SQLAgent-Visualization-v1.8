@@ -163,3 +163,33 @@
 2025-10-19 01:03:22,267 - __main__ - DEBUG - Read 1131 rows from table 光模块在线总数量统计表
 2025-10-19 01:03:22,311 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_010321.xlsx
 2025-10-19 01:03:22,842 - __main__ - INFO - Database exported to output\database_export_20251019_010321.xlsx (status=0)
+2025-10-19 01:49:50,947 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 01:49:50,948 - __main__ - INFO - Found 4 tables in custom_database.db: ['光模块故障表', '光模块在线总数量统计表', '事件监控-光模块故障表', 'ROCE网络事件-光模块故障表']
+2025-10-19 01:49:51,259 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-19 01:49:51,271 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-19 01:49:51,307 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251019_014950.xlsx
+2025-10-19 01:49:51,308 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-19 01:49:51,313 - __main__ - DEBUG - Read 1131 rows from table 光模块在线总数量统计表
+2025-10-19 01:49:51,432 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_014950.xlsx
+2025-10-19 01:49:51,433 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-19 01:49:51,451 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-19 01:49:51,741 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251019_014950.xlsx
+2025-10-19 01:49:51,741 - __main__ - DEBUG - Columns in table ROCE网络事件-光模块故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '光模块厂商', '光模块型号', '光模块SN', '光模块是否更换', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-19 01:49:51,746 - __main__ - DEBUG - Read 160 rows from table ROCE网络事件-光模块故障表
+2025-10-19 01:49:51,780 - __main__ - INFO - Exported table ROCE网络事件-光模块故障表 to sheet in output\database_export_20251019_014950.xlsx
+2025-10-19 01:49:53,135 - __main__ - INFO - Database exported to output\database_export_20251019_014950.xlsx (status=0)
+2025-10-19 01:51:43,714 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 01:51:43,716 - __main__ - INFO - Found 4 tables in custom_database.db: ['光模块故障表', '光模块在线总数量统计表', '事件监控-光模块故障表', 'ROCE网络事件-光模块故障表']
+2025-10-19 01:51:44,015 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-19 01:51:44,018 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-19 01:51:44,044 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251019_015143.xlsx
+2025-10-19 01:51:44,045 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-19 01:51:44,050 - __main__ - DEBUG - Read 1131 rows from table 光模块在线总数量统计表
+2025-10-19 01:51:44,123 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251019_015143.xlsx
+2025-10-19 01:51:44,124 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-19 01:51:44,136 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-19 01:51:44,345 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251019_015143.xlsx
+2025-10-19 01:51:44,346 - __main__ - DEBUG - Columns in table ROCE网络事件-光模块故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '光模块厂商', '光模块型号', '光模块SN', '光模块是否更换', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-19 01:51:44,349 - __main__ - DEBUG - Read 106 rows from table ROCE网络事件-光模块故障表
+2025-10-19 01:51:44,367 - __main__ - INFO - Exported table ROCE网络事件-光模块故障表 to sheet in output\database_export_20251019_015143.xlsx
+2025-10-19 01:51:45,061 - __main__ - INFO - Database exported to output\database_export_20251019_015143.xlsx (status=0)
