@@ -181,9 +181,11 @@ def query_roce_network_event_demo():
         model_changed = event.get("model_changed", "non-data")
         last_outsource_ids = event.get("last_outsource_ids", "non-data")
         end_time = event.get("end_time", "non-data")
+        # 直接从数据库字段获取客户信息
+        customer_name = event.get("server_user", "non-data")
         
-        # 获取集群信息和客户信息
-        cluster_name, customer_name = get_cluster_info(hostname)
+        # 获取集群信息
+        cluster_name, _ = get_cluster_info(hostname)
         
         # 创建记录
         processed_data.append({
