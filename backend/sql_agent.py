@@ -3,7 +3,6 @@
 SQL Agent with visualization capabilities using LangGraph.
 Handles SQL queries, maintains conversation context, and generates tabular and visual outputs.
 """
-import datetime
 import os
 import sys
 import ast
@@ -156,9 +155,17 @@ Table:
 """
 
 def clean_column_name(col: str) -> str:
-    """Clean SQL column names by removing aggregation functions and aliases."""
-    # Remove SUM(), ROUND(), etc., and extract alias if present
-    col = re.sub(r'^(SUM|ROUND|CAST)\((.*?)\)(\s*AS\s*(.*?))?$', r'\4', col, flags=re.IGNORECASE).strip()
+    """Clean SQL column names by removing aggregation functions, aliases, and quotes."""
+    # Remove outer quotes if present
+    col = col.strip().strip('"').strip("'").strip('"')
+    
+    # Remove SUM(), ROUND(), COUNT(), etc., and extract alias if present
+    col = re.sub(r'^(SUM|ROUND|COUNT|AVG|MIN|MAX)\((.*?)\)(\s*AS\s*(.*?))?$', r'\4', col, flags=re.IGNORECASE).strip()
+    col = re.sub(r'^(.*?)\s+AS\s+(.*?)$', r'\2', col, flags=re.IGNORECASE).strip()
+    
+    # Remove any remaining quotes
+    col = col.strip().strip('"').strip("'").strip('"')
+    
     return col if col else "Unknown"
 
 def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str = "") -> List[Dict]:
@@ -212,7 +219,7 @@ def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str =
 def agent_node(state: State, tools) -> Dict:
     """Agent node: Invokes the LLM with tools bound."""
     try:
-        current_date = datetime.date.today()  # Fixed based on query context; use datetime.date.today() in production
+        current_date = "2025-10-19"  # Fixed based on query context; use datetime.date.today() in production
         formatted_system_prompt = system_prompt.format(current_date=current_date)
         state["status_messages"].append("Analyzing question and generating SQL query...")
         prompt = ChatPromptTemplate.from_messages([
@@ -233,8 +240,6 @@ def agent_node(state: State, tools) -> Dict:
         logger.error(f"Agent node failed: {traceback.format_exc()}")
         return {"messages": [AIMessage(content="Agent error occurred.")], "sql_result": [], "viz_type": "none", "viz_data": {}, "tables": [], "status_messages": state["status_messages"] + ["Error in agent processing."]}
 
-
-
 def tool_node(state: State, tools) -> Dict:
     """Tool node: Executes the called tool and handles SQL query results."""
     try:
@@ -253,8 +258,20 @@ def tool_node(state: State, tools) -> Dict:
                     parsed_result = ast.literal_eval(tool_result)
                     if isinstance(parsed_result, list) and all(isinstance(item, tuple) for item in parsed_result):
                         query = tool_call["args"]["query"]
-                        columns = [clean_column_name(col.strip()) for col in query.split("SELECT")[1].split("FROM")[0].split(",")]
-                        sql_result = [dict(zip(columns, row)) for row in parsed_result]
+                        # Extract column names from the query more robustly
+                        query_upper = query.upper()
+                        if "SELECT" in query_upper:
+                            select_part = query_upper.split("SELECT")[1].split("FROM")[0].strip()
+                            # Handle quoted column names
+                            columns = re.findall(r'"[^"]*"|\'[^\']*\'|[^,\s]+', select_part)
+                            columns = [col.strip().strip('"').strip("'") for col in columns]
+                        else:
+                            # Fallback: use the first row's keys if available
+                            columns = list(sql_result[0].keys()) if sql_result else []
+                        
+                        # Clean column names
+                        cleaned_columns = [clean_column_name(col) for col in columns]
+                        sql_result = [dict(zip(cleaned_columns, row)) for row in parsed_result]
                     else:
                         sql_result = parsed_result if isinstance(parsed_result, list) else []
                 else:
@@ -349,46 +366,7 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholde
         # Generate Chart.js configuration
         chart_config = None
         if response["viz_type"] != "none" and response["viz_data"]:
-            keys = list(response["sql_result"][0].keys())
-            label_col = clean_column_name(keys[0])
-            value_col = None
-            for key in reversed(keys):
-                if any(isinstance(row.get(key), (int, float)) and not isinstance(row.get(key), bool) for row in response["sql_result"]):
-                    value_col = clean_column_name(key)
-                    break
-            if value_col:
-                xaxis_title = label_col
-                yaxis_title = value_col if any(kw in value_col.lower() for kw in ["percent", "率"]) else f"{value_col} (%)"
-                chart_title = f"{value_col} by {xaxis_title}"
-                
-                chart_config = {
-                    "type": response["viz_type"],
-                    "data": {
-                        "labels": response["viz_data"].get("labels", response["viz_data"].get("xValues", [])),
-                        "datasets": [{
-                            "label": value_col,
-                            "data": response["viz_data"].get("values", response["viz_data"].get("yValues", [])),
-                            "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
-                            "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
-                            "borderWidth": 1
-                        }]
-                    },
-                    "options": {
-                        "scales": {
-                            "y": {"beginAtZero": True, "title": {"display": True, "text": yaxis_title}},
-                            "x": {"title": {"display": True, "text": xaxis_title}}
-                        },
-                        "plugins": {
-                            "title": {"display": True, "text": chart_title},
-                            "legend": {"display": response["viz_type"] != "pie"}
-                        }
-                    }
-                }
-                if response["viz_type"] == "scatter":
-                    chart_config["data"]["datasets"][0]["data"] = [
-                        {"x": s["x"], "y": s["y"]} for s in response["viz_data"]["series"]
-                    ]
-                    del chart_config["data"]["labels"]
+            chart_config = response["viz_data"]
         
         # Filter messages to include only final AIMessage
         filtered_messages = [

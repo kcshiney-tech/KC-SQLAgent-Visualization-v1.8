@@ -84,10 +84,10 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             viz_type = response_json.get("viz_type", "none").lower()
             if viz_type not in viz_types:
                 logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'bar' for comparison queries")
-                viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
+                viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
         except json.JSONDecodeError:
             logger.warning("LLM returned invalid JSON, defaulting to 'bar' for comparison queries")
-            viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
+            viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
         logger.info(f"Chosen viz type: {viz_type}")
         return viz_type
     except Exception as e:
@@ -133,8 +133,14 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
             if not any(values):
                 logger.warning("All values are zero or non-numeric, returning empty viz data")
                 return {}
-            # For horizontal bar charts, assume comparison queries need horizontal orientation
-            is_horizontal = any(keyword in (label_col.lower() + (secondary_label_col or "").lower()) for keyword in ["compare", "by", "group", "rank", "order"])
+            
+            # Improved horizontal bar detection
+            is_horizontal = (
+                len(labels) > 10 or  # Many categories suggest horizontal
+                any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["分布", "按", "by", "group", "compare", "vs"]) or
+                "厂商" in str(label_col) or "型号" in str(label_col)  # Vendor/model distribution
+            )
+            
             chart_config = {
                 "type": "bar",
                 "data": {
@@ -142,22 +148,24 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                     "datasets": [{
                         "label": value_col,
                         "data": values,
-                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
-                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
+                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FFCE56"] * 5,  # Repeat colors for more data points
+                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FFCE56"] * 5,
                         "borderWidth": 1
                     }]
                 },
                 "options": {
                     "indexAxis": "y" if is_horizontal else "x",
+                    "responsive": True,
+                    "maintainAspectRatio": False,
                     "scales": {
-                        "y" if is_horizontal else "x": {
+                        ("y" if is_horizontal else "x"): {
                             "beginAtZero": True,
                             "title": {
                                 "display": True,
                                 "text": value_col
                             }
                         },
-                        "x" if is_horizontal else "y": {
+                        ("x" if is_horizontal else "y"): {
                             "title": {
                                 "display": True,
                                 "text": label_col + (f" ({secondary_label_col})" if secondary_label_col else "")
@@ -197,6 +205,8 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                     }]
                 },
                 "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
                     "scales": {
                         "x": {
                             "title": {
@@ -242,6 +252,8 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                     }]
                 },
                 "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
                     "plugins": {
                         "title": {
                             "display": True,
@@ -280,6 +292,8 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                     }]
                 },
                 "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
                     "scales": {
                         "x": {
                             "title": {
