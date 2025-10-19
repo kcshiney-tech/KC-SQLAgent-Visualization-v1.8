@@ -291,3 +291,36 @@ class NetworkDeviceInventoryDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info("Network device inventory data load completed (status=0)")
+
+
+class NetworkDeviceFailureDataSourceLoader(DataSourceLoader):
+    """Loader for network device failure data from MongoDB."""
+    
+    def __init__(self, table_name: str = "网络设备故障表"):
+        try:
+            self.table_name = table_name
+            logger.debug(f"Initialized NetworkDeviceFailureDataSourceLoader with table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug("Loading network device failure data from MongoDB")
+            # 导入查询函数
+            from backend.dataSources.network_device_failure import query_network_device_failure
+            
+            # 获取数据
+            data = query_network_device_failure()
+            
+            if not data:
+                logger.warning("No network device failure data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from MongoDB")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load network device failure data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("Network device failure data load completed (status=0)")
