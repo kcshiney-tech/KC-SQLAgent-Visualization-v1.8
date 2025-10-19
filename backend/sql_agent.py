@@ -3,6 +3,7 @@
 SQL Agent with visualization capabilities using LangGraph.
 Handles SQL queries, maintains conversation context, and generates tabular and visual outputs.
 """
+import datetime
 import os
 import sys
 import ast
@@ -129,6 +130,7 @@ def initialize_tools(db: SQLDatabase) -> List:
         raise
 
 system_prompt = """You are an expert SQL agent interacting with a SQLite database in a conversational manner.
+The current date is {current_date}. For time-sensitive queries involving relative dates (e.g., 'near month', 'recent week', 'last year'), translate them into absolute dates using SQLite date functions like date('now', '-1 month') for 'last month', date('now', '-7 days') for 'last week', etc. Always use 'now' as the reference for current time in queries.
 Maintain context from previous messages, including user questions, assistant responses, and tool outputs (e.g., table lists, schemas, query results).
 For each new user question:
 1. Check prior messages for known table or schema information to avoid redundant tool calls.
@@ -210,9 +212,11 @@ def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str =
 def agent_node(state: State, tools) -> Dict:
     """Agent node: Invokes the LLM with tools bound."""
     try:
+        current_date = datetime.date.today()  # Fixed based on query context; use datetime.date.today() in production
+        formatted_system_prompt = system_prompt.format(current_date=current_date)
         state["status_messages"].append("Analyzing question and generating SQL query...")
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
+            ("system", formatted_system_prompt),
             MessagesPlaceholder("messages"),
         ])
         llm_with_tools = llm.bind_tools(tools)
@@ -228,6 +232,8 @@ def agent_node(state: State, tools) -> Dict:
     except Exception as e:
         logger.error(f"Agent node failed: {traceback.format_exc()}")
         return {"messages": [AIMessage(content="Agent error occurred.")], "sql_result": [], "viz_type": "none", "viz_data": {}, "tables": [], "status_messages": state["status_messages"] + ["Error in agent processing."]}
+
+
 
 def tool_node(state: State, tools) -> Dict:
     """Tool node: Executes the called tool and handles SQL query results."""
