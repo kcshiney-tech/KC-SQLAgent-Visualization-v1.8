@@ -5468,3 +5468,319 @@ FileNotFoundError: Excel file not found: 20250813光模块分析.xlsx
 2025-10-19 11:48:45,462 - backend.data_loader - INFO - ROCE event data load completed (status=0)
 2025-10-19 11:48:45,463 - backend.database_builder - INFO - Database built/updated at test_roce_event.db (rebuild=True, status=0)
 2025-10-19 11:48:45,498 - pymongo.topology - DEBUG - {"message": "Server heartbeat failed", "topologyId": {"$oid": "68f45f9c6e2704cd596acb8a"}, "serverHost": "10.69.74.235", "serverPort": 8526, "awaited": true, "durationMS": 510.6056000222452, "failure": "\"_OperationCancelled('operation cancelled')\"", "driverConnectionId": 1}
+2025-10-19 14:44:12,777 - backend.data_loader - DEBUG - Initialized NetworkDeviceInventoryDataSourceLoader with table 网络设备总数量表
+2025-10-19 14:44:12,778 - backend.data_loader - DEBUG - Loading network device inventory data from API
+2025-10-19 14:44:12,800 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 10.69.77.238:80
+2025-10-19 14:44:13,025 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:13,107 - backend.dataSources.network_device_inventory - INFO - 首次返回 total = 16446
+2025-10-19 14:44:13,108 - backend.dataSources.network_device_inventory - INFO - 已请求页 1，返回 1000 条，累计 1000 条 (reported total=16446)
+2025-10-19 14:44:13,248 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:13,370 - backend.dataSources.network_device_inventory - INFO - 第 2 页返回 total = 15446（变化，之前=16446）
+2025-10-19 14:44:13,370 - backend.dataSources.network_device_inventory - INFO - 已请求页 2，返回 1000 条，累计 2000 条 (reported total=15446)
+2025-10-19 14:44:13,494 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:13,573 - backend.dataSources.network_device_inventory - INFO - 第 3 页返回 total = 14446（变化，之前=15446）
+2025-10-19 14:44:13,573 - backend.dataSources.network_device_inventory - INFO - 已请求页 3，返回 1000 条，累计 3000 条 (reported total=14446)
+2025-10-19 14:44:13,689 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:13,842 - backend.dataSources.network_device_inventory - INFO - 第 4 页返回 total = 13446（变化，之前=14446）
+2025-10-19 14:44:13,843 - backend.dataSources.network_device_inventory - INFO - 已请求页 4，返回 1000 条，累计 4000 条 (reported total=13446)
+2025-10-19 14:44:13,955 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:14,229 - backend.dataSources.network_device_inventory - INFO - 第 5 页返回 total = 12446（变化，之前=13446）
+2025-10-19 14:44:14,230 - backend.dataSources.network_device_inventory - INFO - 已请求页 5，返回 1000 条，累计 5000 条 (reported total=12446)
+2025-10-19 14:44:14,343 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:14,406 - backend.dataSources.network_device_inventory - INFO - 第 6 页返回 total = 11446（变化，之前=12446）
+2025-10-19 14:44:14,408 - backend.dataSources.network_device_inventory - INFO - 已请求页 6，返回 1000 条，累计 6000 条 (reported total=11446)
+2025-10-19 14:44:14,509 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:14,587 - backend.dataSources.network_device_inventory - INFO - 第 7 页返回 total = 10446（变化，之前=11446）
+2025-10-19 14:44:14,588 - backend.dataSources.network_device_inventory - INFO - 已请求页 7，返回 1000 条，累计 7000 条 (reported total=10446)
+2025-10-19 14:44:14,683 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:14,847 - backend.dataSources.network_device_inventory - INFO - 第 8 页返回 total = 9446（变化，之前=10446）
+2025-10-19 14:44:14,850 - backend.dataSources.network_device_inventory - INFO - 已请求页 8，返回 1000 条，累计 8000 条 (reported total=9446)
+2025-10-19 14:44:14,962 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:15,034 - backend.dataSources.network_device_inventory - INFO - 第 9 页返回 total = 8446（变化，之前=9446）
+2025-10-19 14:44:15,036 - backend.dataSources.network_device_inventory - INFO - 已请求页 9，返回 1000 条，累计 9000 条 (reported total=8446)
+2025-10-19 14:44:15,128 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:15,192 - backend.dataSources.network_device_inventory - INFO - 第 10 页返回 total = 7446（变化，之前=8446）
+2025-10-19 14:44:15,193 - backend.dataSources.network_device_inventory - INFO - 已请求页 10，返回 1000 条，累计 10000 条 (reported total=7446)
+2025-10-19 14:44:15,275 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:15,347 - backend.dataSources.network_device_inventory - INFO - 第 11 页返回 total = 6446（变化，之前=7446）
+2025-10-19 14:44:15,348 - backend.dataSources.network_device_inventory - INFO - 已请求页 11，返回 1000 条，累计 11000 条 (reported total=6446)
+2025-10-19 14:44:15,465 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:15,718 - backend.dataSources.network_device_inventory - INFO - 第 12 页返回 total = 5446（变化，之前=6446）
+2025-10-19 14:44:15,719 - backend.dataSources.network_device_inventory - INFO - 已请求页 12，返回 1000 条，累计 12000 条 (reported total=5446)
+2025-10-19 14:44:15,795 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:15,873 - backend.dataSources.network_device_inventory - INFO - 第 13 页返回 total = 4446（变化，之前=5446）
+2025-10-19 14:44:15,874 - backend.dataSources.network_device_inventory - INFO - 已请求页 13，返回 1000 条，累计 13000 条 (reported total=4446)
+2025-10-19 14:44:15,952 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:16,274 - backend.dataSources.network_device_inventory - INFO - 第 14 页返回 total = 3446（变化，之前=4446）
+2025-10-19 14:44:16,285 - backend.dataSources.network_device_inventory - INFO - 已请求页 14，返回 1000 条，累计 14000 条 (reported total=3446)
+2025-10-19 14:44:16,372 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:16,443 - backend.dataSources.network_device_inventory - INFO - 第 15 页返回 total = 2446（变化，之前=3446）
+2025-10-19 14:44:16,444 - backend.dataSources.network_device_inventory - INFO - 已请求页 15，返回 1000 条，累计 15000 条 (reported total=2446)
+2025-10-19 14:44:16,506 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:16,566 - backend.dataSources.network_device_inventory - INFO - 第 16 页返回 total = 1446（变化，之前=2446）
+2025-10-19 14:44:16,567 - backend.dataSources.network_device_inventory - INFO - 已请求页 16，返回 1000 条，累计 16000 条 (reported total=1446)
+2025-10-19 14:44:16,616 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:16,647 - backend.dataSources.network_device_inventory - INFO - 第 17 页返回 total = 446（变化，之前=1446）
+2025-10-19 14:44:16,648 - backend.dataSources.network_device_inventory - INFO - 已请求页 17，返回 446 条，累计 16446 条 (reported total=446)
+2025-10-19 14:44:16,694 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 71
+2025-10-19 14:44:16,697 - backend.dataSources.network_device_inventory - INFO - 第 18 页返回 total = 0（变化，之前=446）
+2025-10-19 14:44:16,698 - backend.dataSources.network_device_inventory - INFO - 第 18 页无数据，结束
+2025-10-19 14:44:16,700 - backend.dataSources.network_device_inventory - INFO - 抓取结束。总记录数: 16446
+2025-10-19 14:44:16,702 - backend.dataSources.network_device_inventory - INFO - 最后一次 page_total 报告为: 0
+2025-10-19 14:44:16,770 - backend.dataSources.network_device_inventory - INFO - 处理完成，共生成 16446 条记录
+2025-10-19 14:44:16,783 - backend.data_loader - DEBUG - Loaded 16446 records from API
+2025-10-19 14:44:16,785 - backend.data_loader - INFO - Network device inventory data load completed (status=0)
+2025-10-19 14:44:16,807 - backend.data_loader - DEBUG - Initialized NetworkDeviceInventoryDataSourceLoader with table 网络设备总数量表
+2025-10-19 14:44:16,808 - backend.database_builder - DEBUG - Initialized DatabaseBuilder with db_path: test_network_device_inventory.db
+2025-10-19 14:44:16,832 - backend.database_builder - DEBUG - Processing data source: <backend.data_loader.NetworkDeviceInventoryDataSourceLoader object at 0x000002BC5605DF90>
+2025-10-19 14:44:16,832 - backend.data_loader - DEBUG - Loading network device inventory data from API
+2025-10-19 14:44:16,836 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 10.69.77.238:80
+2025-10-19 14:44:17,007 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:17,117 - backend.dataSources.network_device_inventory - INFO - 首次返回 total = 16446
+2025-10-19 14:44:17,118 - backend.dataSources.network_device_inventory - INFO - 已请求页 1，返回 1000 条，累计 1000 条 (reported total=16446)
+2025-10-19 14:44:17,253 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:17,330 - backend.dataSources.network_device_inventory - INFO - 第 2 页返回 total = 15446（变化，之前=16446）
+2025-10-19 14:44:17,332 - backend.dataSources.network_device_inventory - INFO - 已请求页 2，返回 1000 条，累计 2000 条 (reported total=15446)
+2025-10-19 14:44:17,457 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:17,531 - backend.dataSources.network_device_inventory - INFO - 第 3 页返回 total = 14446（变化，之前=15446）
+2025-10-19 14:44:17,532 - backend.dataSources.network_device_inventory - INFO - 已请求页 3，返回 1000 条，累计 3000 条 (reported total=14446)
+2025-10-19 14:44:17,652 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:17,717 - backend.dataSources.network_device_inventory - INFO - 第 4 页返回 total = 13446（变化，之前=14446）
+2025-10-19 14:44:17,718 - backend.dataSources.network_device_inventory - INFO - 已请求页 4，返回 1000 条，累计 4000 条 (reported total=13446)
+2025-10-19 14:44:17,851 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:17,902 - backend.dataSources.network_device_inventory - INFO - 第 5 页返回 total = 12446（变化，之前=13446）
+2025-10-19 14:44:17,902 - backend.dataSources.network_device_inventory - INFO - 已请求页 5，返回 1000 条，累计 5000 条 (reported total=12446)
+2025-10-19 14:44:18,015 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:18,063 - backend.dataSources.network_device_inventory - INFO - 第 6 页返回 total = 11446（变化，之前=12446）
+2025-10-19 14:44:18,064 - backend.dataSources.network_device_inventory - INFO - 已请求页 6，返回 1000 条，累计 6000 条 (reported total=11446)
+2025-10-19 14:44:18,177 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:18,239 - backend.dataSources.network_device_inventory - INFO - 第 7 页返回 total = 10446（变化，之前=11446）
+2025-10-19 14:44:18,240 - backend.dataSources.network_device_inventory - INFO - 已请求页 7，返回 1000 条，累计 7000 条 (reported total=10446)
+2025-10-19 14:44:18,340 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:18,407 - backend.dataSources.network_device_inventory - INFO - 第 8 页返回 total = 9446（变化，之前=10446）
+2025-10-19 14:44:18,408 - backend.dataSources.network_device_inventory - INFO - 已请求页 8，返回 1000 条，累计 8000 条 (reported total=9446)
+2025-10-19 14:44:18,545 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,009 - backend.dataSources.network_device_inventory - INFO - 第 9 页返回 total = 8446（变化，之前=9446）
+2025-10-19 14:44:19,010 - backend.dataSources.network_device_inventory - INFO - 已请求页 9，返回 1000 条，累计 9000 条 (reported total=8446)
+2025-10-19 14:44:19,107 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,186 - backend.dataSources.network_device_inventory - INFO - 第 10 页返回 total = 7446（变化，之前=8446）
+2025-10-19 14:44:19,187 - backend.dataSources.network_device_inventory - INFO - 已请求页 10，返回 1000 条，累计 10000 条 (reported total=7446)
+2025-10-19 14:44:19,274 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,343 - backend.dataSources.network_device_inventory - INFO - 第 11 页返回 total = 6446（变化，之前=7446）
+2025-10-19 14:44:19,344 - backend.dataSources.network_device_inventory - INFO - 已请求页 11，返回 1000 条，累计 11000 条 (reported total=6446)
+2025-10-19 14:44:19,422 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,491 - backend.dataSources.network_device_inventory - INFO - 第 12 页返回 total = 5446（变化，之前=6446）
+2025-10-19 14:44:19,491 - backend.dataSources.network_device_inventory - INFO - 已请求页 12，返回 1000 条，累计 12000 条 (reported total=5446)
+2025-10-19 14:44:19,563 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,635 - backend.dataSources.network_device_inventory - INFO - 第 13 页返回 total = 4446（变化，之前=5446）
+2025-10-19 14:44:19,636 - backend.dataSources.network_device_inventory - INFO - 已请求页 13，返回 1000 条，累计 13000 条 (reported total=4446)
+2025-10-19 14:44:19,704 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,770 - backend.dataSources.network_device_inventory - INFO - 第 14 页返回 total = 3446（变化，之前=4446）
+2025-10-19 14:44:19,771 - backend.dataSources.network_device_inventory - INFO - 已请求页 14，返回 1000 条，累计 14000 条 (reported total=3446)
+2025-10-19 14:44:19,837 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:19,903 - backend.dataSources.network_device_inventory - INFO - 第 15 页返回 total = 2446（变化，之前=3446）
+2025-10-19 14:44:19,904 - backend.dataSources.network_device_inventory - INFO - 已请求页 15，返回 1000 条，累计 15000 条 (reported total=2446)
+2025-10-19 14:44:19,968 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:20,035 - backend.dataSources.network_device_inventory - INFO - 第 16 页返回 total = 1446（变化，之前=2446）
+2025-10-19 14:44:20,036 - backend.dataSources.network_device_inventory - INFO - 已请求页 16，返回 1000 条，累计 16000 条 (reported total=1446)
+2025-10-19 14:44:20,225 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:44:20,301 - backend.dataSources.network_device_inventory - INFO - 第 17 页返回 total = 446（变化，之前=1446）
+2025-10-19 14:44:20,313 - backend.dataSources.network_device_inventory - INFO - 已请求页 17，返回 446 条，累计 16446 条 (reported total=446)
+2025-10-19 14:44:20,360 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 71
+2025-10-19 14:44:20,361 - backend.dataSources.network_device_inventory - INFO - 第 18 页返回 total = 0（变化，之前=446）
+2025-10-19 14:44:20,362 - backend.dataSources.network_device_inventory - INFO - 第 18 页无数据，结束
+2025-10-19 14:44:20,362 - backend.dataSources.network_device_inventory - INFO - 抓取结束。总记录数: 16446
+2025-10-19 14:44:20,363 - backend.dataSources.network_device_inventory - INFO - 最后一次 page_total 报告为: 0
+2025-10-19 14:44:20,417 - backend.dataSources.network_device_inventory - INFO - 处理完成，共生成 16446 条记录
+2025-10-19 14:44:20,425 - backend.data_loader - DEBUG - Loaded 16446 records from API
+2025-10-19 14:44:20,425 - backend.data_loader - INFO - Network device inventory data load completed (status=0)
+2025-10-19 14:44:20,426 - backend.database_builder - DEBUG - Sample record columns: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-19 14:44:20,427 - backend.database_builder - DEBUG - Sanitized name: 设备主机名 -> 设备主机名
+2025-10-19 14:44:20,436 - backend.database_builder - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-10-19 14:44:20,438 - backend.database_builder - DEBUG - Sanitized name: 型号 -> 型号
+2025-10-19 14:44:20,440 - backend.database_builder - DEBUG - Sanitized name: 设备SN -> 设备SN
+2025-10-19 14:44:20,441 - backend.database_builder - DEBUG - Sanitized name: 机房 -> 机房
+2025-10-19 14:44:20,442 - backend.database_builder - DEBUG - Sanitized name: 机柜位 -> 机柜位
+2025-10-19 14:44:20,443 - backend.database_builder - DEBUG - Sanitized name: 管理IP -> 管理IP
+2025-10-19 14:44:20,444 - backend.database_builder - DEBUG - Sanitized name: 集群 -> 集群
+2025-10-19 14:44:20,445 - backend.database_builder - DEBUG - Sanitized name: 客户 -> 客户
+2025-10-19 14:44:20,446 - backend.database_builder - DEBUG - Sanitized name: 状态 -> 状态
+2025-10-19 14:44:20,447 - backend.database_builder - DEBUG - Sanitized name: 是否过保 -> 是否过保
+2025-10-19 14:44:20,447 - backend.database_builder - DEBUG - Sanitized name: 维保到期时间 -> 维保到期时间
+2025-10-19 14:44:20,448 - backend.database_builder - DEBUG - Sanitized name: 更新时间 -> 更新时间
+2025-10-19 14:44:20,496 - backend.database_builder - INFO - Rebuilt table 网络设备总数量表 from 网络设备总数量表
+2025-10-19 14:44:20,497 - backend.database_builder - DEBUG - Sanitized name: 设备主机名 -> 设备主机名
+2025-10-19 14:44:20,497 - backend.database_builder - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-10-19 14:44:20,498 - backend.database_builder - DEBUG - Sanitized name: 型号 -> 型号
+2025-10-19 14:44:20,498 - backend.database_builder - DEBUG - Sanitized name: 设备SN -> 设备SN
+2025-10-19 14:44:20,499 - backend.database_builder - DEBUG - Sanitized name: 机房 -> 机房
+2025-10-19 14:44:20,499 - backend.database_builder - DEBUG - Sanitized name: 机柜位 -> 机柜位
+2025-10-19 14:44:20,500 - backend.database_builder - DEBUG - Sanitized name: 管理IP -> 管理IP
+2025-10-19 14:44:20,501 - backend.database_builder - DEBUG - Sanitized name: 集群 -> 集群
+2025-10-19 14:44:20,503 - backend.database_builder - DEBUG - Sanitized name: 客户 -> 客户
+2025-10-19 14:44:20,504 - backend.database_builder - DEBUG - Sanitized name: 状态 -> 状态
+2025-10-19 14:44:20,505 - backend.database_builder - DEBUG - Sanitized name: 是否过保 -> 是否过保
+2025-10-19 14:44:20,507 - backend.database_builder - DEBUG - Sanitized name: 维保到期时间 -> 维保到期时间
+2025-10-19 14:44:20,507 - backend.database_builder - DEBUG - Sanitized name: 更新时间 -> 更新时间
+2025-10-19 14:44:20,761 - backend.database_builder - INFO - Inserted 16446 records into table 网络设备总数量表
+2025-10-19 14:44:20,801 - backend.database_builder - INFO - Database built/updated at test_network_device_inventory.db (rebuild=True, status=0)
+2025-10-19 14:48:09,395 - backend.data_loader - DEBUG - Initialized NetworkDeviceInventoryDataSourceLoader with table 网络设备总数量表
+2025-10-19 14:48:09,395 - backend.data_loader - DEBUG - Loading network device inventory data from API
+2025-10-19 14:48:09,399 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 10.69.77.238:80
+2025-10-19 14:48:09,621 - backend.data_loader - INFO - Network device inventory data load completed (status=0)
+2025-10-19 14:56:18,924 - backend.data_loader - DEBUG - Initialized NetworkDeviceInventoryDataSourceLoader with table 网络设备总数量表
+2025-10-19 14:56:18,930 - backend.data_loader - DEBUG - Loading network device inventory data from API
+2025-10-19 14:56:18,986 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 10.69.77.238:80
+2025-10-19 14:56:19,157 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:19,297 - backend.dataSources.network_device_inventory - INFO - 首次返回 total = 16446
+2025-10-19 14:56:19,298 - backend.dataSources.network_device_inventory - INFO - 已请求页 1，返回 1000 条，累计 1000 条 (reported total=16446)
+2025-10-19 14:56:19,439 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:19,565 - backend.dataSources.network_device_inventory - INFO - 第 2 页返回 total = 15446（变化，之前=16446）
+2025-10-19 14:56:19,566 - backend.dataSources.network_device_inventory - INFO - 已请求页 2，返回 1000 条，累计 2000 条 (reported total=15446)
+2025-10-19 14:56:19,723 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:19,797 - backend.dataSources.network_device_inventory - INFO - 第 3 页返回 total = 14446（变化，之前=15446）
+2025-10-19 14:56:19,798 - backend.dataSources.network_device_inventory - INFO - 已请求页 3，返回 1000 条，累计 3000 条 (reported total=14446)
+2025-10-19 14:56:19,964 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:20,585 - backend.dataSources.network_device_inventory - INFO - 第 4 页返回 total = 13446（变化，之前=14446）
+2025-10-19 14:56:20,587 - backend.dataSources.network_device_inventory - INFO - 已请求页 4，返回 1000 条，累计 4000 条 (reported total=13446)
+2025-10-19 14:56:20,715 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:21,364 - backend.dataSources.network_device_inventory - INFO - 第 5 页返回 total = 12446（变化，之前=13446）
+2025-10-19 14:56:21,365 - backend.dataSources.network_device_inventory - INFO - 已请求页 5，返回 1000 条，累计 5000 条 (reported total=12446)
+2025-10-19 14:56:21,526 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:21,682 - backend.dataSources.network_device_inventory - INFO - 第 6 页返回 total = 11446（变化，之前=12446）
+2025-10-19 14:56:21,683 - backend.dataSources.network_device_inventory - INFO - 已请求页 6，返回 1000 条，累计 6000 条 (reported total=11446)
+2025-10-19 14:56:21,789 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:21,891 - backend.dataSources.network_device_inventory - INFO - 第 7 页返回 total = 10446（变化，之前=11446）
+2025-10-19 14:56:21,906 - backend.dataSources.network_device_inventory - INFO - 已请求页 7，返回 1000 条，累计 7000 条 (reported total=10446)
+2025-10-19 14:56:22,061 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:22,182 - backend.dataSources.network_device_inventory - INFO - 第 8 页返回 total = 9446（变化，之前=10446）
+2025-10-19 14:56:22,183 - backend.dataSources.network_device_inventory - INFO - 已请求页 8，返回 1000 条，累计 8000 条 (reported total=9446)
+2025-10-19 14:56:22,303 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:22,557 - backend.dataSources.network_device_inventory - INFO - 第 9 页返回 total = 8446（变化，之前=9446）
+2025-10-19 14:56:22,559 - backend.dataSources.network_device_inventory - INFO - 已请求页 9，返回 1000 条，累计 9000 条 (reported total=8446)
+2025-10-19 14:56:22,650 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:22,723 - backend.dataSources.network_device_inventory - INFO - 第 10 页返回 total = 7446（变化，之前=8446）
+2025-10-19 14:56:22,724 - backend.dataSources.network_device_inventory - INFO - 已请求页 10，返回 1000 条，累计 10000 条 (reported total=7446)
+2025-10-19 14:56:22,814 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:22,899 - backend.dataSources.network_device_inventory - INFO - 第 11 页返回 total = 6446（变化，之前=7446）
+2025-10-19 14:56:22,900 - backend.dataSources.network_device_inventory - INFO - 已请求页 11，返回 1000 条，累计 11000 条 (reported total=6446)
+2025-10-19 14:56:23,010 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:23,170 - backend.dataSources.network_device_inventory - INFO - 第 12 页返回 total = 5446（变化，之前=6446）
+2025-10-19 14:56:23,171 - backend.dataSources.network_device_inventory - INFO - 已请求页 12，返回 1000 条，累计 12000 条 (reported total=5446)
+2025-10-19 14:56:23,251 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:23,353 - backend.dataSources.network_device_inventory - INFO - 第 13 页返回 total = 4446（变化，之前=5446）
+2025-10-19 14:56:23,354 - backend.dataSources.network_device_inventory - INFO - 已请求页 13，返回 1000 条，累计 13000 条 (reported total=4446)
+2025-10-19 14:56:23,431 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:23,561 - backend.dataSources.network_device_inventory - INFO - 第 14 页返回 total = 3446（变化，之前=4446）
+2025-10-19 14:56:23,567 - backend.dataSources.network_device_inventory - INFO - 已请求页 14，返回 1000 条，累计 14000 条 (reported total=3446)
+2025-10-19 14:56:23,661 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:23,798 - backend.dataSources.network_device_inventory - INFO - 第 15 页返回 total = 2446（变化，之前=3446）
+2025-10-19 14:56:23,799 - backend.dataSources.network_device_inventory - INFO - 已请求页 15，返回 1000 条，累计 15000 条 (reported total=2446)
+2025-10-19 14:56:23,879 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:24,011 - backend.dataSources.network_device_inventory - INFO - 第 16 页返回 total = 1446（变化，之前=2446）
+2025-10-19 14:56:24,012 - backend.dataSources.network_device_inventory - INFO - 已请求页 16，返回 1000 条，累计 16000 条 (reported total=1446)
+2025-10-19 14:56:24,063 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:24,189 - backend.dataSources.network_device_inventory - INFO - 第 17 页返回 total = 446（变化，之前=1446）
+2025-10-19 14:56:24,219 - backend.dataSources.network_device_inventory - INFO - 已请求页 17，返回 446 条，累计 16446 条 (reported total=446)
+2025-10-19 14:56:24,324 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 71
+2025-10-19 14:56:24,328 - backend.dataSources.network_device_inventory - INFO - 第 18 页返回 total = 0（变化，之前=446）
+2025-10-19 14:56:24,344 - backend.dataSources.network_device_inventory - INFO - 第 18 页无数据，结束
+2025-10-19 14:56:24,347 - backend.dataSources.network_device_inventory - INFO - 抓取结束。总记录数: 16446
+2025-10-19 14:56:24,347 - backend.dataSources.network_device_inventory - INFO - 最后一次 page_total 报告为: 0
+2025-10-19 14:56:24,930 - backend.dataSources.network_device_inventory - INFO - 处理完成，共生成 16446 条记录
+2025-10-19 14:56:24,937 - backend.data_loader - DEBUG - Loaded 16446 records from API
+2025-10-19 14:56:24,941 - backend.data_loader - INFO - Network device inventory data load completed (status=0)
+2025-10-19 14:56:24,967 - backend.data_loader - DEBUG - Initialized NetworkDeviceInventoryDataSourceLoader with table 网络设备总数量表
+2025-10-19 14:56:24,967 - backend.database_builder - DEBUG - Initialized DatabaseBuilder with db_path: test_network_device_inventory.db
+2025-10-19 14:56:24,990 - backend.database_builder - DEBUG - Processing data source: <backend.data_loader.NetworkDeviceInventoryDataSourceLoader object at 0x000001CDCD04A0D0>
+2025-10-19 14:56:24,991 - backend.data_loader - DEBUG - Loading network device inventory data from API
+2025-10-19 14:56:24,994 - urllib3.connectionpool - DEBUG - Starting new HTTP connection (1): 10.69.77.238:80
+2025-10-19 14:56:25,163 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:25,449 - backend.dataSources.network_device_inventory - INFO - 首次返回 total = 16446
+2025-10-19 14:56:25,497 - backend.dataSources.network_device_inventory - INFO - 已请求页 1，返回 1000 条，累计 1000 条 (reported total=16446)
+2025-10-19 14:56:25,639 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:25,717 - backend.dataSources.network_device_inventory - INFO - 第 2 页返回 total = 15446（变化，之前=16446）
+2025-10-19 14:56:25,718 - backend.dataSources.network_device_inventory - INFO - 已请求页 2，返回 1000 条，累计 2000 条 (reported total=15446)
+2025-10-19 14:56:25,836 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:25,911 - backend.dataSources.network_device_inventory - INFO - 第 3 页返回 total = 14446（变化，之前=15446）
+2025-10-19 14:56:25,912 - backend.dataSources.network_device_inventory - INFO - 已请求页 3，返回 1000 条，累计 3000 条 (reported total=14446)
+2025-10-19 14:56:26,030 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,082 - backend.dataSources.network_device_inventory - INFO - 第 4 页返回 total = 13446（变化，之前=14446）
+2025-10-19 14:56:26,082 - backend.dataSources.network_device_inventory - INFO - 已请求页 4，返回 1000 条，累计 4000 条 (reported total=13446)
+2025-10-19 14:56:26,187 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,252 - backend.dataSources.network_device_inventory - INFO - 第 5 页返回 total = 12446（变化，之前=13446）
+2025-10-19 14:56:26,254 - backend.dataSources.network_device_inventory - INFO - 已请求页 5，返回 1000 条，累计 5000 条 (reported total=12446)
+2025-10-19 14:56:26,361 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,409 - backend.dataSources.network_device_inventory - INFO - 第 6 页返回 total = 11446（变化，之前=12446）
+2025-10-19 14:56:26,410 - backend.dataSources.network_device_inventory - INFO - 已请求页 6，返回 1000 条，累计 6000 条 (reported total=11446)
+2025-10-19 14:56:26,520 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,563 - backend.dataSources.network_device_inventory - INFO - 第 7 页返回 total = 10446（变化，之前=11446）
+2025-10-19 14:56:26,564 - backend.dataSources.network_device_inventory - INFO - 已请求页 7，返回 1000 条，累计 7000 条 (reported total=10446)
+2025-10-19 14:56:26,655 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,700 - backend.dataSources.network_device_inventory - INFO - 第 8 页返回 total = 9446（变化，之前=10446）
+2025-10-19 14:56:26,700 - backend.dataSources.network_device_inventory - INFO - 已请求页 8，返回 1000 条，累计 8000 条 (reported total=9446)
+2025-10-19 14:56:26,802 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,840 - backend.dataSources.network_device_inventory - INFO - 第 9 页返回 total = 8446（变化，之前=9446）
+2025-10-19 14:56:26,841 - backend.dataSources.network_device_inventory - INFO - 已请求页 9，返回 1000 条，累计 9000 条 (reported total=8446)
+2025-10-19 14:56:26,932 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:26,976 - backend.dataSources.network_device_inventory - INFO - 第 10 页返回 total = 7446（变化，之前=8446）
+2025-10-19 14:56:26,978 - backend.dataSources.network_device_inventory - INFO - 已请求页 10，返回 1000 条，累计 10000 条 (reported total=7446)
+2025-10-19 14:56:27,065 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:27,107 - backend.dataSources.network_device_inventory - INFO - 第 11 页返回 total = 6446（变化，之前=7446）
+2025-10-19 14:56:27,108 - backend.dataSources.network_device_inventory - INFO - 已请求页 11，返回 1000 条，累计 11000 条 (reported total=6446)
+2025-10-19 14:56:27,193 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:27,323 - backend.dataSources.network_device_inventory - INFO - 第 12 页返回 total = 5446（变化，之前=6446）
+2025-10-19 14:56:27,329 - backend.dataSources.network_device_inventory - INFO - 已请求页 12，返回 1000 条，累计 12000 条 (reported total=5446)
+2025-10-19 14:56:27,507 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:27,828 - backend.dataSources.network_device_inventory - INFO - 第 13 页返回 total = 4446（变化，之前=5446）
+2025-10-19 14:56:27,848 - backend.dataSources.network_device_inventory - INFO - 已请求页 13，返回 1000 条，累计 13000 条 (reported total=4446)
+2025-10-19 14:56:28,033 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:28,159 - backend.dataSources.network_device_inventory - INFO - 第 14 页返回 total = 3446（变化，之前=4446）
+2025-10-19 14:56:28,163 - backend.dataSources.network_device_inventory - INFO - 已请求页 14，返回 1000 条，累计 14000 条 (reported total=3446)
+2025-10-19 14:56:28,247 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:28,329 - backend.dataSources.network_device_inventory - INFO - 第 15 页返回 total = 2446（变化，之前=3446）
+2025-10-19 14:56:28,330 - backend.dataSources.network_device_inventory - INFO - 已请求页 15，返回 1000 条，累计 15000 条 (reported total=2446)
+2025-10-19 14:56:28,444 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:28,702 - backend.dataSources.network_device_inventory - INFO - 第 16 页返回 total = 1446（变化，之前=2446）
+2025-10-19 14:56:28,704 - backend.dataSources.network_device_inventory - INFO - 已请求页 16，返回 1000 条，累计 16000 条 (reported total=1446)
+2025-10-19 14:56:28,758 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 None
+2025-10-19 14:56:28,789 - backend.dataSources.network_device_inventory - INFO - 第 17 页返回 total = 446（变化，之前=1446）
+2025-10-19 14:56:28,790 - backend.dataSources.network_device_inventory - INFO - 已请求页 17，返回 446 条，累计 16446 条 (reported total=446)
+2025-10-19 14:56:28,831 - urllib3.connectionpool - DEBUG - http://10.69.77.238:80 "POST /open-apis/netware/get-device-info HTTP/1.1" 200 71
+2025-10-19 14:56:28,833 - backend.dataSources.network_device_inventory - INFO - 第 18 页返回 total = 0（变化，之前=446）
+2025-10-19 14:56:28,834 - backend.dataSources.network_device_inventory - INFO - 第 18 页无数据，结束
+2025-10-19 14:56:28,835 - backend.dataSources.network_device_inventory - INFO - 抓取结束。总记录数: 16446
+2025-10-19 14:56:28,835 - backend.dataSources.network_device_inventory - INFO - 最后一次 page_total 报告为: 0
+2025-10-19 14:56:29,176 - backend.dataSources.network_device_inventory - INFO - 处理完成，共生成 16446 条记录
+2025-10-19 14:56:29,181 - backend.data_loader - DEBUG - Loaded 16446 records from API
+2025-10-19 14:56:29,182 - backend.data_loader - INFO - Network device inventory data load completed (status=0)
+2025-10-19 14:56:29,183 - backend.database_builder - DEBUG - Sample record columns: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-19 14:56:29,185 - backend.database_builder - DEBUG - Sanitized name: 设备主机名 -> 设备主机名
+2025-10-19 14:56:29,191 - backend.database_builder - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-10-19 14:56:29,192 - backend.database_builder - DEBUG - Sanitized name: 型号 -> 型号
+2025-10-19 14:56:29,193 - backend.database_builder - DEBUG - Sanitized name: 设备SN -> 设备SN
+2025-10-19 14:56:29,194 - backend.database_builder - DEBUG - Sanitized name: 机房 -> 机房
+2025-10-19 14:56:29,195 - backend.database_builder - DEBUG - Sanitized name: 机柜位 -> 机柜位
+2025-10-19 14:56:29,196 - backend.database_builder - DEBUG - Sanitized name: 管理IP -> 管理IP
+2025-10-19 14:56:29,197 - backend.database_builder - DEBUG - Sanitized name: 集群 -> 集群
+2025-10-19 14:56:29,199 - backend.database_builder - DEBUG - Sanitized name: 客户 -> 客户
+2025-10-19 14:56:29,201 - backend.database_builder - DEBUG - Sanitized name: 状态 -> 状态
+2025-10-19 14:56:29,202 - backend.database_builder - DEBUG - Sanitized name: 是否过保 -> 是否过保
+2025-10-19 14:56:29,203 - backend.database_builder - DEBUG - Sanitized name: 维保到期时间 -> 维保到期时间
+2025-10-19 14:56:29,205 - backend.database_builder - DEBUG - Sanitized name: 更新时间 -> 更新时间
+2025-10-19 14:56:29,295 - backend.database_builder - INFO - Rebuilt table 网络设备总数量表 from 网络设备总数量表
+2025-10-19 14:56:29,295 - backend.database_builder - DEBUG - Sanitized name: 设备主机名 -> 设备主机名
+2025-10-19 14:56:29,296 - backend.database_builder - DEBUG - Sanitized name: 厂商 -> 厂商
+2025-10-19 14:56:29,297 - backend.database_builder - DEBUG - Sanitized name: 型号 -> 型号
+2025-10-19 14:56:29,297 - backend.database_builder - DEBUG - Sanitized name: 设备SN -> 设备SN
+2025-10-19 14:56:29,298 - backend.database_builder - DEBUG - Sanitized name: 机房 -> 机房
+2025-10-19 14:56:29,298 - backend.database_builder - DEBUG - Sanitized name: 机柜位 -> 机柜位
+2025-10-19 14:56:29,299 - backend.database_builder - DEBUG - Sanitized name: 管理IP -> 管理IP
+2025-10-19 14:56:29,300 - backend.database_builder - DEBUG - Sanitized name: 集群 -> 集群
+2025-10-19 14:56:29,301 - backend.database_builder - DEBUG - Sanitized name: 客户 -> 客户
+2025-10-19 14:56:29,302 - backend.database_builder - DEBUG - Sanitized name: 状态 -> 状态
+2025-10-19 14:56:29,302 - backend.database_builder - DEBUG - Sanitized name: 是否过保 -> 是否过保
+2025-10-19 14:56:29,303 - backend.database_builder - DEBUG - Sanitized name: 维保到期时间 -> 维保到期时间
+2025-10-19 14:56:29,304 - backend.database_builder - DEBUG - Sanitized name: 更新时间 -> 更新时间
+2025-10-19 14:56:29,531 - backend.database_builder - INFO - Inserted 16446 records into table 网络设备总数量表
+2025-10-19 14:56:29,566 - backend.database_builder - INFO - Database built/updated at test_network_device_inventory.db (rebuild=True, status=0)

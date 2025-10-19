@@ -193,3 +193,15 @@
 2025-10-19 01:51:44,349 - __main__ - DEBUG - Read 106 rows from table ROCE网络事件-光模块故障表
 2025-10-19 01:51:44,367 - __main__ - INFO - Exported table ROCE网络事件-光模块故障表 to sheet in output\database_export_20251019_015143.xlsx
 2025-10-19 01:51:45,061 - __main__ - INFO - Database exported to output\database_export_20251019_015143.xlsx (status=0)
+2025-10-19 14:48:23,410 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 14:48:23,411 - __main__ - INFO - Found 1 tables in test_network_device_inventory.db: ['网络设备总数量表']
+2025-10-19 14:48:23,921 - __main__ - DEBUG - Columns in table 网络设备总数量表: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-19 14:48:24,003 - __main__ - DEBUG - Read 16446 rows from table 网络设备总数量表
+2025-10-19 14:48:25,471 - __main__ - INFO - Exported table 网络设备总数量表 to sheet in output\database_export_20251019_144823.xlsx
+2025-10-19 14:48:27,737 - __main__ - INFO - Database exported to output\database_export_20251019_144823.xlsx (status=0)
+2025-10-19 14:56:43,158 - __main__ - DEBUG - Output directory ensured: output
+2025-10-19 14:56:43,163 - __main__ - INFO - Found 1 tables in test_network_device_inventory.db: ['网络设备总数量表']
+2025-10-19 14:56:44,002 - __main__ - DEBUG - Columns in table 网络设备总数量表: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-19 14:56:44,281 - __main__ - DEBUG - Read 16446 rows from table 网络设备总数量表
+2025-10-19 14:56:48,884 - __main__ - INFO - Exported table 网络设备总数量表 to sheet in output\database_export_20251019_145643.xlsx
+2025-10-19 14:56:54,655 - __main__ - INFO - Database exported to output\database_export_20251019_145643.xlsx (status=0)
