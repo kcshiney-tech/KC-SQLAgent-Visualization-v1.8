@@ -255,7 +255,8 @@ def query_network_device_failure():
     logger.info(f"查询时间范围: {start} 至 {end}")
 
     # 分别查询两种类型的事件以调试
-    event_types = ["NetworkDevice", "EventTypeNetworkDeviceBoard"]
+    event_types = ["NetworkDevice", "NetworkDeviceBoard"]
+    # event_types = []
     is_finished = None  # True表示只查询已结束的事件
     is_one_click_finish = None  # False表示只查询非一键完成的事件
 
