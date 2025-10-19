@@ -50,8 +50,9 @@ def initialize_llm() -> ChatOpenAI:
 
 llm = initialize_llm()
 
+   
 def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", tool_history: str = "") -> str:
-    """Choose visualization type based on question, SQL result, and conversation/tool history."""
+    """Choose visualization type based on question, SQL result, and conversation/tool history, considering user intent."""
     try:
         viz_types = ["bar", "horizontal_bar", "line", "pie", "scatter", "none"]
         prompt = ChatPromptTemplate.from_template(
@@ -60,12 +61,16 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             - Conversation history: '{history}'
             - Tool history (SQL queries and results): '{tool_history}'
             - SQL query result (first 3 rows): {sample_result}
-            Select the most appropriate visualization type from: {viz_types}.
+            First, detect user intent for visualization: 
+            - Explicit intent: If the question or history contains keywords like 'chart', 'graph', 'visualize', 'plot', 'show me a', or explicitly requests a visual, proceed to select a viz type.
+            - Implicit intent: If the query involves trends (e.g., 'trend', 'over time', 'change over'), distributions (e.g., 'distribution', 'proportion', 'percentage of'), comparisons (e.g., 'compare', 'vs', 'ranking'), or aggregations that benefit from visuals (e.g., 'group by', 'top N'), consider visualization even without explicit request, as charts can enhance understanding.
+            - Otherwise, default to 'none' even if data suits visualization.
+            If visualization is intended (explicit or implicit), select the most appropriate type from: {viz_types}.
             - Use 'horizontal_bar' for comparisons or aggregations across categories (e.g., sums, counts, or percentages by category).
             - Use 'line' for trends over time (e.g., values over dates or sequential data).
             - Use 'pie' for proportions or percentages of a total (e.g., distribution across categories).
             - Use 'scatter' for correlations between two numeric variables.
-            - Use 'none' if no visualization is suitable (e.g., single value, empty result, or unsuitable data).
+            - Use 'none' if no visualization is suitable or not intended (e.g., single value, empty result, unsuitable data, or no visual intent).
             Consider historical context and tool outputs (e.g., keywords like 'trend', 'compare', prior SQL results) to refine the choice.
             Ensure the selected type matches the data structure (e.g., at least one categorical and one numeric column for horizontal_bar/pie, two numeric columns for scatter).
             Output a JSON object: {{"viz_type": "chosen_type"}}."""

@@ -233,9 +233,8 @@ if prompt:
                         for table in result["tables"]:
                             st.write(f"**{table['title']}**")
                             st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
-                    if result["chart_config"]:
+                    if result["chart_config"]:  # Only render if chart_config exists (based on user intent)
                         st.write("```chartjs\n" + json.dumps(result["chart_config"], indent=2) + "\n```")
-                    st.markdown(f"**Processing Time**: {result['processing_time']:.2f} seconds")
                     # Update chat history with final message only
                     assistant_message = AIMessage(content=result['answer'])
                     if result["tables"]:
