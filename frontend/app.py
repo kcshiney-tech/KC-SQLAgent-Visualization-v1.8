@@ -4,6 +4,7 @@ Streamlit frontend for the SQL Agent with data visualization.
 Provides a ChatGPT-like interface with session management and tabular output.
 """
 import streamlit as st
+import streamlit.components.v1 as components  # Explicitly import components
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -105,7 +106,6 @@ dashboard_modules = {
     ],
     "容量模块": [
         {"query": "近两个月光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近两个月光模块故障"}
-        # {"query": "Top failing products in the last week", "title": "Recent Failures"}
     ]
 }
 
@@ -131,7 +131,34 @@ def render_dashboard():
                             st.write(f"**{table['title']}**")
                             st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
                     if result["chart_config"]:
-                        st.write("```chartjs\n" + json.dumps(result["chart_config"], indent=2) + "\n```")
+                        # Render Chart.js with unique canvas ID
+                        chart_id = f"chart_{uuid.uuid4().hex}"
+                        chart_json = json.dumps(result["chart_config"])
+                        html = f"""
+                        <html>
+                        <head>
+                            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                        </head>
+                        <body>
+                            <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                            <script>
+                                document.addEventListener('DOMContentLoaded', function() {{
+                                    try {{
+                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                        var myChart = new Chart(ctx, {chart_json});
+                                    }} catch (e) {{
+                                        console.error('Chart.js error: ' + e.message);
+                                    }}
+                                }});
+                            </script>
+                        </body>
+                        </html>
+                        """
+                        try:
+                            components.html(html, height=450, scrolling=False)
+                        except Exception as e:
+                            st.error(f"Failed to render chart: {str(e)}. Please ensure Streamlit is version 0.87.0 or higher.")
+                            logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
 # Streamlit UI
 st.title("Text-to-SQL Agent with Data Visualization")
@@ -234,7 +261,34 @@ with tab1:
                             st.write(f"**{table['title']}**")
                             st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
                     if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                        st.write("```chartjs\n" + json.dumps(message.chart_config, indent=2) + "\n```")
+                        # Render Chart.js with unique canvas ID
+                        chart_id = f"chart_{uuid.uuid4().hex}"
+                        chart_json = json.dumps(message.chart_config)
+                        html = f"""
+                        <html>
+                        <head>
+                            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                        </head>
+                        <body>
+                            <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                            <script>
+                                document.addEventListener('DOMContentLoaded', function() {{
+                                    try {{
+                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                        var myChart = new Chart(ctx, {chart_json});
+                                    }} catch (e) {{
+                                        console.error('Chart.js error: ' + e.message);
+                                    }}
+                                }});
+                            </script>
+                        </body>
+                        </html>
+                        """
+                        try:
+                            components.html(html, height=450, scrolling=False)
+                        except Exception as e:
+                            st.error(f"Failed to render chart: {str(e)}. Please ensure Streamlit is version 0.87.0 or higher.")
+                            logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
     # Chat input and processing
     prompt = st.chat_input("Enter your query (e.g., 'Which country's customers spent the most?')")
@@ -272,8 +326,35 @@ with tab1:
                             for table in result["tables"]:
                                 st.write(f"**{table['title']}**")
                                 st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
-                        if result["chart_config"]:  # Only render if chart_config exists (based on user intent)
-                            st.write("```chartjs\n" + json.dumps(result["chart_config"], indent=2) + "\n```")
+                        if result["chart_config"]:
+                            # Render Chart.js with unique canvas ID
+                            chart_id = f"chart_{uuid.uuid4().hex}"
+                            chart_json = json.dumps(result["chart_config"])
+                            html = f"""
+                            <html>
+                            <head>
+                                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                            </head>
+                            <body>
+                                <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                                <script>
+                                    document.addEventListener('DOMContentLoaded', function() {{
+                                        try {{
+                                            var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                            var myChart = new Chart(ctx, {chart_json});
+                                        }} catch (e) {{
+                                            console.error('Chart.js error: ' + e.message);
+                                        }}
+                                    }});
+                                </script>
+                            </body>
+                            </html>
+                            """
+                            try:
+                                components.html(html, height=450, scrolling=False)
+                            except Exception as e:
+                                st.error(f"Failed to render chart: {str(e)}. Please ensure Streamlit is version 0.87.0 or higher.")
+                                logger.error(f"Chart rendering failed: {traceback.format_exc()}")
                         st.markdown(f"**Processing Time**: {result['processing_time']:.2f} seconds")
                         # Update chat history with final message only
                         assistant_message = AIMessage(content=result['answer'])

@@ -50,11 +50,10 @@ def initialize_llm() -> ChatOpenAI:
 
 llm = initialize_llm()
 
-   
 def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", tool_history: str = "") -> str:
     """Choose visualization type based on question, SQL result, and conversation/tool history, considering user intent."""
     try:
-        viz_types = ["bar", "horizontal_bar", "line", "pie", "scatter", "none"]
+        viz_types = ["bar", "line", "pie", "scatter", "none"]
         prompt = ChatPromptTemplate.from_template(
             """You are a data visualization expert. Based on:
             - User question: '{question}'
@@ -66,13 +65,13 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             - Implicit intent: If the query involves trends (e.g., 'trend', 'over time', 'change over'), distributions (e.g., 'distribution', 'proportion', 'percentage of'), comparisons (e.g., 'compare', 'vs', 'ranking'), or aggregations that benefit from visuals (e.g., 'group by', 'top N'), consider visualization even without explicit request, as charts can enhance understanding.
             - Otherwise, default to 'none' even if data suits visualization.
             If visualization is intended (explicit or implicit), select the most appropriate type from: {viz_types}.
-            - Use 'horizontal_bar' for comparisons or aggregations across categories (e.g., sums, counts, or percentages by category).
+            - Use 'bar' for comparisons or aggregations across categories (e.g., sums, counts, or percentages by category). For horizontal bar charts, 'bar' will be used with appropriate options.
             - Use 'line' for trends over time (e.g., values over dates or sequential data).
             - Use 'pie' for proportions or percentages of a total (e.g., distribution across categories).
             - Use 'scatter' for correlations between two numeric variables.
             - Use 'none' if no visualization is suitable or not intended (e.g., single value, empty result, unsuitable data, or no visual intent).
             Consider historical context and tool outputs (e.g., keywords like 'trend', 'compare', prior SQL results) to refine the choice.
-            Ensure the selected type matches the data structure (e.g., at least one categorical and one numeric column for horizontal_bar/pie, two numeric columns for scatter).
+            Ensure the selected type matches the data structure (e.g., at least one categorical and one numeric column for bar/pie, two numeric columns for scatter).
             Output a JSON object: {{"viz_type": "chosen_type"}}."""
         )
         chain = prompt | llm
@@ -84,11 +83,11 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             response_json = json.loads(response.content)
             viz_type = response_json.get("viz_type", "none").lower()
             if viz_type not in viz_types:
-                logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'horizontal_bar' for comparison queries")
-                viz_type = "horizontal_bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
+                logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'bar' for comparison queries")
+                viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
         except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON, defaulting to 'horizontal_bar' for comparison queries")
-            viz_type = "horizontal_bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
+            logger.warning("LLM returned invalid JSON, defaulting to 'bar' for comparison queries")
+            viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order"]) else "none"
         logger.info(f"Chosen viz type: {viz_type}")
         return viz_type
     except Exception as e:
@@ -125,7 +124,7 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
         
         is_numeric = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
         
-        if viz_type in ["bar", "horizontal_bar", "pie"]:
+        if viz_type == "bar":
             if secondary_label_col:
                 labels = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
             else:
@@ -134,7 +133,49 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
             if not any(values):
                 logger.warning("All values are zero or non-numeric, returning empty viz data")
                 return {}
-            return {"labels": labels, "values": values}
+            # For horizontal bar charts, assume comparison queries need horizontal orientation
+            is_horizontal = any(keyword in (label_col.lower() + (secondary_label_col or "").lower()) for keyword in ["compare", "by", "group", "rank", "order"])
+            chart_config = {
+                "type": "bar",
+                "data": {
+                    "labels": labels,
+                    "datasets": [{
+                        "label": value_col,
+                        "data": values,
+                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
+                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
+                        "borderWidth": 1
+                    }]
+                },
+                "options": {
+                    "indexAxis": "y" if is_horizontal else "x",
+                    "scales": {
+                        "y" if is_horizontal else "x": {
+                            "beginAtZero": True,
+                            "title": {
+                                "display": True,
+                                "text": value_col
+                            }
+                        },
+                        "x" if is_horizontal else "y": {
+                            "title": {
+                                "display": True,
+                                "text": label_col + (f" ({secondary_label_col})" if secondary_label_col else "")
+                            }
+                        }
+                    },
+                    "plugins": {
+                        "title": {
+                            "display": True,
+                            "text": f"{value_col} by {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
+                        },
+                        "legend": {
+                            "display": True
+                        }
+                    }
+                }
+            }
+            return chart_config
         elif viz_type == "line":
             if secondary_label_col:
                 x = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
@@ -144,7 +185,74 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
             if not any(y):
                 logger.warning("All y-values are zero or non-numeric, returning empty viz data")
                 return {}
-            return {"xValues": x, "yValues": y}
+            return {
+                "type": "line",
+                "data": {
+                    "labels": x,
+                    "datasets": [{
+                        "label": value_col,
+                        "data": y,
+                        "borderColor": "#36A2EB",
+                        "fill": False
+                    }]
+                },
+                "options": {
+                    "scales": {
+                        "x": {
+                            "title": {
+                                "display": True,
+                                "text": label_col + (f" ({secondary_label_col})" if secondary_label_col else "")
+                            }
+                        },
+                        "y": {
+                            "beginAtZero": True,
+                            "title": {
+                                "display": True,
+                                "text": value_col
+                            }
+                        }
+                    },
+                    "plugins": {
+                        "title": {
+                            "display": True,
+                            "text": f"{value_col} over {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
+                        }
+                    }
+                }
+            }
+        elif viz_type == "pie":
+            if secondary_label_col:
+                labels = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
+            else:
+                labels = [str(row[label_col]) for row in sql_result]
+            values = [float(row[value_col]) if is_numeric(row.get(value_col)) else 0 for row in sql_result]
+            if not any(values):
+                logger.warning("All values are zero or non-numeric, returning empty viz data")
+                return {}
+            return {
+                "type": "pie",
+                "data": {
+                    "labels": labels,
+                    "datasets": [{
+                        "label": value_col,
+                        "data": values,
+                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
+                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
+                        "borderWidth": 1
+                    }]
+                },
+                "options": {
+                    "plugins": {
+                        "title": {
+                            "display": True,
+                            "text": f"{value_col} by {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
+                        },
+                        "legend": {
+                            "display": True
+                        }
+                    }
+                }
+            }
         elif viz_type == "scatter":
             numeric_cols = [key for key in keys if any(is_numeric(row.get(key)) for row in sql_result)]
             if len(numeric_cols) < 2:
@@ -156,11 +264,44 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                 x_val = row.get(x_key)
                 y_val = row.get(y_key)
                 if is_numeric(x_val) and is_numeric(y_val):
-                    series.append({"x": float(x_val), "y": float(y_val), "id": i})
+                    series.append({"x": float(x_val), "y": float(y_val)})
             if not series:
                 logger.warning("No valid numeric pairs for scatter plot, returning empty viz data")
                 return {}
-            return {"series": series}
+            return {
+                "type": "scatter",
+                "data": {
+                    "datasets": [{
+                        "label": f"{x_key} vs {y_key}",
+                        "data": series,
+                        "backgroundColor": "#36A2EB",
+                        "borderColor": "#36A2EB",
+                        "pointRadius": 5
+                    }]
+                },
+                "options": {
+                    "scales": {
+                        "x": {
+                            "title": {
+                                "display": True,
+                                "text": x_key
+                            }
+                        },
+                        "y": {
+                            "title": {
+                                "display": True,
+                                "text": y_key
+                            }
+                        }
+                    },
+                    "plugins": {
+                        "title": {
+                            "display": True,
+                            "text": f"{y_key} vs {x_key}"
+                        }
+                    }
+                }
+            }
         else:
             logger.error(f"Unsupported viz type: {viz_type}")
             return {}
