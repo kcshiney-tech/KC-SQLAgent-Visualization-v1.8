@@ -184,6 +184,10 @@ def query_roce_network_event_demo():
         # 直接从数据库字段获取客户信息
         customer_name = event.get("server_user", "non-data")
         
+        # 只有光模块是否更换为true的才被计入数据库中
+        if model_changed != "是":
+            continue
+        
         # 获取集群信息
         cluster_name, _ = get_cluster_info(hostname)
         
