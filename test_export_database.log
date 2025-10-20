@@ -304,3 +304,9 @@
 2025-10-19 23:44:58,480 - __main__ - DEBUG - Read 309 rows from table 网络设备故障表
 2025-10-19 23:44:58,511 - __main__ - INFO - Exported table 网络设备故障表 to sheet in output\database_export_20251019_234456.xlsx
 2025-10-19 23:45:01,526 - __main__ - INFO - Database exported to output\database_export_20251019_234456.xlsx (status=0)
+2025-10-20 14:35:59,106 - __main__ - DEBUG - Output directory ensured: output
+2025-10-20 14:35:59,125 - __main__ - INFO - Found 1 tables in test_optical_module_inventory.db: ['光模块在线总数量统计表']
+2025-10-20 14:36:00,812 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-20 14:36:00,851 - __main__ - DEBUG - Read 1131 rows from table 光模块在线总数量统计表
+2025-10-20 14:36:01,215 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251020_143559.xlsx
+2025-10-20 14:36:02,848 - __main__ - INFO - Database exported to output\database_export_20251020_143559.xlsx (status=0)

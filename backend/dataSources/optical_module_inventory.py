@@ -69,6 +69,21 @@ def get_cluster_info_from_hostname(hostname: str) -> Tuple[str, str]:
             # 处理重复字符的情况，如QHQHYD0x -> QHYD0x
             if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
                 cluster_name = cluster_name[2:]
+            
+            # 根据主机名添加前缀
+            if "-ROCE_TOR-" in hostname:
+                cluster_name = f"ROCE-TOR-{cluster_name}"
+            elif "-SROCE_TOR-" in hostname:
+                cluster_name = f"SROCE-TOR-{cluster_name}"
+            elif "-ROCE_AGG-" in hostname:
+                cluster_name = f"ROCE-AGG-{cluster_name}"
+            elif "-SROCE_AGG-" in hostname:
+                cluster_name = f"SROCE-AGG-{cluster_name}"
+            elif "-ROCE_CORE-" in hostname:
+                cluster_name = f"ROCE-CORE-{cluster_name}"
+            elif "-SROCE_CORE-" in hostname:
+                cluster_name = f"SROCE-CORE-{cluster_name}"
+                
             return (cluster_name, customer_name)
     
     # 检查是否匹配ROCE_TOR模式
