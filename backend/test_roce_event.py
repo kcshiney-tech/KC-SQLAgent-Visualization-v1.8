@@ -71,11 +71,11 @@ def test_roce_event_database():
                 print(f"  {table[0]}")
                 
             # 查询ROCE网络事件-光模块故障表的前几条记录
-            cursor.execute("SELECT * FROM 'ROCE网络事件-光模块故障表' LIMIT 5;")
+            cursor.execute("SELECT * FROM 'ROCE网络事件-网络零件（光模块+AOC）故障表' LIMIT 5;")
             records = cursor.fetchall()
-            print("\nROCE网络事件-光模块故障表的前5条记录:")
+            print("\nROCE网络事件-网络零件（光模块+AOC）故障表的前5条记录:")
             # 获取列名
-            cursor.execute("PRAGMA table_info('ROCE网络事件-光模块故障表');")
+            cursor.execute("PRAGMA table_info('ROCE网络事件-网络零件（光模块+AOC）故障表');")
             columns = [column[1] for column in cursor.fetchall()]
             print("列名:", columns)
             for record in records:

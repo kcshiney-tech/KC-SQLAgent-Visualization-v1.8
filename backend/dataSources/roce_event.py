@@ -9,60 +9,12 @@ from typing import Dict, Any, Optional, List
 import logging
 from backend.dataSources.mongodb_connector import connect_mongodb, get_database
 import re
+from backend.dataSources.noc_asset_query import query_cable_assets
+from backend.dataSources.cluster_info import get_cluster_info_from_hostname
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-def get_cluster_info(hostname: str) -> tuple:
-    """
-    根据主机名确定集群名和客户名称
-    对于ROCE网络事件，只有ROCE-TOR下联-集群编号0x，如果主机名符合-ROCE_TOR-0x，不用检查对端，直接就是这个集群名。
-    
-    Args:
-        hostname (str): 主机名
-        
-    Returns:
-        tuple: (cluster_name, customer_name)
-    """
-    if not hostname or hostname == "no-data":
-        return ("", "")  # 没匹配上集群名的，集群和客户处为空
-    
-    # 已知的集群映射
-    cluster_mapping = {
-        "QH-QHDX-AZ-ROCE_TOR-02": ("QHDX02", "小米"),
-        "NB-LT-AZ-ROCE_TOR-01": ("NBLT01", "百川"),
-        "QY-YD-DC-ROCE_TOR-05": ("QYYD05", "月暗"),
-        "QY-ZNJ-DC-ROCE_TOR-01": ("QYZNJ01", "云启")
-    }
-    
-    # 检查是否匹配已知的集群
-    for prefix, (cluster_name, customer_name) in cluster_mapping.items():
-        if hostname.startswith(prefix):
-            # 处理重复字符的情况，如QHQHYD0x -> QHYD0x
-            if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
-                cluster_name = cluster_name[2:]
-            
-            # 对于ROCE网络事件，集群名格式为ROCE-TOR下联-集群编号0x
-            cluster_name = f"ROCE-TOR下联-{cluster_name}"
-            return (cluster_name, customer_name)
-    
-    # 对于其他主机名，检查是否符合-ROCE_TOR-0x模式
-    tor_match = re.match(r'^([A-Z]+)-([A-Z0-9]+)-[A-Z0-9-]*ROCE_TOR-(\d+)', hostname)
-    
-    if tor_match:
-        part1, part2, number = tor_match.groups()
-        cluster_name = f"{part1}{part2}0{number[-1]}"
-        # 处理重复字符的情况
-        if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
-            cluster_name = cluster_name[2:]
-        # 对于ROCE网络事件，集群名格式为ROCE-TOR下联-集群编号0x
-        cluster_name = f"ROCE-TOR下联-{cluster_name}"
-        return (cluster_name, "no-data")
-    
-    # 没匹配上集群名的，集群和客户处为空
-    return ("", "")
 
 
 # ==========================================
@@ -146,12 +98,13 @@ def query_roce_network_event_demo():
             logger.error(f"查询失败: {e}")
             return {"total": 0, "data": []}
 
-    #最近90天
+    #最近360天
+    days = 360
     end = datetime.now()
-    start = (end - timedelta(days=90)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = (end - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
     logger.info(f"查询时间范围: {start} 至 {end}")
 
-    event_code = "CRC_ERROR"
+    event_code = None
     is_finished = True  # None表示不区分是否结束的事件
     is_one_click_finish = None  # None表示不区分是否一键完成的事件
 
@@ -166,6 +119,10 @@ def query_roce_network_event_demo():
 
     # 处理数据
     processed_data = []
+    
+    # 收集需要查询的SN
+    sn_list = []
+    sn_to_events = {}  # 用于存储SN到事件索引的映射
     
     for event in result["data"]:
         # 提取事件相关信息
@@ -189,7 +146,24 @@ def query_roce_network_event_demo():
         #     continue
         
         # 获取集群信息
-        cluster_name, _ = get_cluster_info(hostname)
+        cluster_name, _ = get_cluster_info_from_hostname(hostname, is_roce_event=True)
+        
+        # 初始化网络零件种类为光模块
+        part_type = "光模块"
+        
+        # 判断网络零件种类
+        # 如果网络零件型号中包含AOC字符串，或者网络零件厂商为TRILIGHT或包含"钧恒"且网络零件SN包含"-"，则标记为"AOC"
+        if "AOC" in str(optical_model_name).upper() or \
+           str(optical_model_vendor).upper() == "TRILIGHT" or \
+           ("钧恒" in str(optical_model_vendor) and "-" in str(optical_model_sn)):
+            part_type = "AOC"
+        else:
+            # 收集需要进一步查询的SN
+            sn_list.append(optical_model_sn)
+            # 记录SN对应的事件索引
+            if optical_model_sn not in sn_to_events:
+                sn_to_events[optical_model_sn] = []
+            sn_to_events[optical_model_sn].append(len(processed_data))
         
         # 创建记录
         processed_data.append({
@@ -199,16 +173,45 @@ def query_roce_network_event_demo():
             "交换机名称": hostname,
             "交换机端口名称": portname,
             "机房": idc,
-            "光模块厂商": optical_model_vendor,
-            "光模块型号": optical_model_name,
-            "光模块SN": optical_model_sn,
-            "光模块是否更换": model_changed,
+            "网络零件种类": part_type,
+            "网络零件厂商": optical_model_vendor,
+            "网络零件型号": optical_model_name,
+            "网络零件SN": optical_model_sn,
             "集群": cluster_name,
             "客户信息": customer_name,
             "外包单号": last_outsource_ids,
-            "事件完成时间": end_time,
-            "事件描述": ""  # 暂时为空，可以根据需要填充
+            "事件完成时间": end_time
         })
+    
+    # 对于收集到的SN，使用API查询确定是否为AOC
+    if sn_list:
+        # 去重
+        unique_sns = sorted(list(set(sn_list)))  # 排序以提高效率
+        # 构造批量查询字符串
+        batch_query = "\n".join(unique_sns)
+        # 查询电缆资产
+        cable_result = query_cable_assets(batch_query)
+        
+        # 如果查询成功，更新相应的记录
+        if "error" not in cable_result:
+            cable_data = cable_result.get("data", [])
+            # 按SN排序以提高查找效率
+            sorted_cable_data = sorted(cable_data, key=lambda x: (x.get("sn_a", ""), x.get("sn_b", "")))
+            
+            # 更新标记为AOC的记录
+            for cable_record in sorted_cable_data:
+                sn_a = cable_record.get("sn_a", "")
+                sn_b = cable_record.get("sn_b", "")
+                
+                # 检查A端SN
+                if sn_a in sn_to_events:
+                    for index in sn_to_events[sn_a]:
+                        processed_data[index]["网络零件种类"] = "AOC"
+                
+                # 检查B端SN
+                if sn_b in sn_to_events:
+                    for index in sn_to_events[sn_b]:
+                        processed_data[index]["网络零件种类"] = "AOC"
     
     logger.info(f"处理完成，共生成 {len(processed_data)} 条记录")
     return processed_data

@@ -243,7 +243,7 @@ if __name__ == "__main__":
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表5", "光模块故障表"),("工作表6", "光模块故障表")])
         # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users"
         OpticalFailureDataSourceLoader(),
-        # OpticalModuleInventoryDataSourceLoader(),
+        OpticalModuleInventoryDataSourceLoader(),
         RoceEventDataSourceLoader(),
         NetworkDeviceInventoryDataSourceLoader(),
         NetworkDeviceFailureDataSourceLoader()

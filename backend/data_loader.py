@@ -230,7 +230,7 @@ class OpticalModuleInventoryDataSourceLoader(DataSourceLoader):
 class RoceEventDataSourceLoader(DataSourceLoader):
     """Loader for ROCE event data from MongoDB."""
     
-    def __init__(self, table_name: str = "ROCE网络事件-光模块故障表"):
+    def __init__(self, table_name: str = "ROCE网络事件-网络零件（光模块+AOC）故障表"):
         try:
             self.table_name = table_name
             logger.debug(f"Initialized RoceEventDataSourceLoader with table {table_name}")

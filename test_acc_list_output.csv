@@ -1,0 +1,2 @@
+class,class_id,device,event,id,idc,is_entry,is_maintenance,list,maintenance_begin_time,maintenance_end_time,producer,rack_ip,sn,status,type,type_id,vendor
+光模块,6,,2023Q3,547968,NXDX01,1,否,IDCG23071900510-1,0000-00-00 00:00:00,2026-12-28 10:00:09,CREALIGHTS,,CVJH05023511277,故障,CREALIGHTS-QSFPDD-400G-VR4,2803,CREALIGHTS

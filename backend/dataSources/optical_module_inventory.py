@@ -13,6 +13,7 @@ import time
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
+from backend.dataSources.cluster_info import get_cluster_info_from_hostname
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,160 +43,6 @@ seen_lock = Lock()         # 锁保护 seen_ids 与 all_count 写入
 all_count = 0
 all_count_lock = Lock()
 
-def get_cluster_info_from_hostname(hostname: str) -> Tuple[str, str]:
-    """
-    根据主机名确定集群名和客户名称
-    
-    Args:
-        hostname (str): 主机名
-        
-    Returns:
-        tuple: (cluster_name, customer_name)
-    """
-    if not hostname or hostname == "non-data":
-        return ("", "")
-    
-    # 已知的集群映射
-    cluster_mapping = {
-        "QH-QHDX-AZ-ROCE_TOR-02": ("QHDX02", "小米"),
-        "NB-LT-AZ-ROCE_TOR-01": ("NBLT01", "百川"),
-        "QY-YD-DC-ROCE_TOR-05": ("QYYD05", "月暗"),
-        "QY-ZNJ-DC-ROCE_TOR-01": ("QYZNJ01", "云启")
-    }
-    
-    # 检查是否匹配已知的集群
-    for prefix, (cluster_name, customer_name) in cluster_mapping.items():
-        if hostname.startswith(prefix):
-            # 处理重复字符的情况，如QHQHYD0x -> QHYD0x
-            if len(cluster_name) >= 6 and cluster_name[:2] == cluster_name[2:4]:
-                cluster_name = cluster_name[2:]
-            
-            # 根据主机名添加前缀
-            if "-ROCE_TOR-" in hostname:
-                cluster_name = f"ROCE-TOR-{cluster_name}"
-            elif "-SROCE_TOR-" in hostname:
-                cluster_name = f"SROCE-TOR-{cluster_name}"
-            elif "-ROCE_AGG-" in hostname:
-                cluster_name = f"ROCE-AGG-{cluster_name}"
-            elif "-SROCE_AGG-" in hostname:
-                cluster_name = f"SROCE-AGG-{cluster_name}"
-            elif "-ROCE_CORE-" in hostname:
-                cluster_name = f"ROCE-CORE-{cluster_name}"
-            elif "-SROCE_CORE-" in hostname:
-                cluster_name = f"SROCE-CORE-{cluster_name}"
-                
-            return (cluster_name, customer_name)
-    
-    # 检查是否匹配ROCE_TOR模式
-    tor_match = re.match(r'^[A-Z0-9-]*-ROCE_TOR-\d+', hostname)
-    if tor_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-ROCE_TOR-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"ROCE-TOR-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 检查是否匹配SROCE_TOR模式
-    stor_match = re.match(r'^[A-Z0-9-]*-SROCE_TOR-\d+', hostname)
-    if stor_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-SROCE_TOR-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"SROCE-TOR-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 检查是否匹配ROCE_AGG模式
-    agg_match = re.match(r'^[A-Z0-9-]*-ROCE_AGG-\d+', hostname)
-    if agg_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-ROCE_AGG-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"ROCE-AGG-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 检查是否匹配SROCE_AGG模式
-    sagg_match = re.match(r'^[A-Z0-9-]*-SROCE_AGG-\d+', hostname)
-    if sagg_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-SROCE_AGG-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"SROCE-AGG-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 检查是否匹配CORE模式
-    core_match = re.match(r'^[A-Z0-9-]*-ROCE_CORE-\d+', hostname)
-    if core_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-ROCE_CORE-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"ROCE-CORE-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 检查是否匹配SCORE模式
-    score_match = re.match(r'^[A-Z0-9-]*-SROCE_CORE-\d+', hostname)
-    if score_match:
-        # 提取机房信息，从主机名前面两个字符串拼接在一起
-        parts = hostname.split('-')
-        if len(parts) >= 2:
-            # 如果前两个部分相同，使用第二个部分；否则使用前两个部分拼接
-            if parts[0] == parts[1]:
-                idc = parts[0]
-            else:
-                idc = parts[0] + parts[1]
-            # 查找数字部分
-            num_match = re.search(r'-SROCE_CORE-(\d+)', hostname)
-            if num_match:
-                number = num_match.group(1)
-                cluster_name = f"SROCE-CORE-{idc}0{number[-1] if number else 'x'}"
-                return (cluster_name, "")
-    
-    # 没匹配上集群名的，集群和客户处为空
-    return ("", "")
 
 def process_module_type(module_type: str) -> str:
     """
@@ -417,7 +264,7 @@ def fetch_all_optical_module_inventory() -> List[Dict[str, Any]]:
         processed_module_type = process_module_type(module_type)
         
         # 获取集群和客户信息
-        cluster, customer = get_cluster_info_from_hostname(hostname)
+        cluster, customer = get_cluster_info_from_hostname(hostname,is_roce_event=False)
         
         # 创建聚合键
         key = (processed_module_type, producer, idc, cluster, customer)
