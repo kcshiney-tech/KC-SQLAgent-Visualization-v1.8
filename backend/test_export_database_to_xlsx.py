@@ -93,6 +93,6 @@ def export_database_to_xlsx(db_path: str, output_dir: str = "output") -> dict:
         conn.close()
 
 if __name__ == "__main__":
-    result = export_database_to_xlsx("custom_database.db")
-    # result = export_database_to_xlsx("test_roce_event.db")
+    # result = export_database_to_xlsx("custom_database.db")
+    result = export_database_to_xlsx("test_noc_optical_module.db")
     print(f"Export completed with status: {result['status']}, file: {result['file_path']}, errors: {result['errors']}")

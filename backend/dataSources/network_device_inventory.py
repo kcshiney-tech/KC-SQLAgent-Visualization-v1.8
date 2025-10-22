@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-网络设备库存数据获取
+网络设备数据获取
 """
 
 import requests

@@ -3,6 +3,7 @@
 SQL Agent with visualization capabilities using LangGraph.
 Handles SQL queries, maintains conversation context, and generates tabular and visual outputs.
 """
+from datetime import datetime
 import os
 import sys
 import ast
@@ -219,7 +220,7 @@ def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str =
 def agent_node(state: State, tools) -> Dict:
     """Agent node: Invokes the LLM with tools bound."""
     try:
-        current_date = "2025-10-19"  # Fixed based on query context; use datetime.date.today() in production
+        current_date = datetime.date.today()  
         formatted_system_prompt = system_prompt.format(current_date=current_date)
         state["status_messages"].append("Analyzing question and generating SQL query...")
         prompt = ChatPromptTemplate.from_messages([

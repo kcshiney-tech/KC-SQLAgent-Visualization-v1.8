@@ -324,3 +324,36 @@ class NetworkDeviceFailureDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info("Network device failure data load completed (status=0)")
+
+
+class NOCOpticalModuleFullDataSourceLoader(DataSourceLoader):
+    """Loader for NOC optical module full data."""
+    
+    def __init__(self, table_name: str = "光模块在线总数量统计表"):
+        try:
+            self.table_name = table_name
+            logger.debug(f"Initialized NOCOpticalModuleFullDataSourceLoader with table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug("Loading NOC optical module full data")
+            # 导入查询函数
+            from backend.dataSources.api_optical_module_full_query import fetch_and_process_optical_modules_full
+            
+            # 获取数据
+            data = fetch_and_process_optical_modules_full()
+            
+            if not data:
+                logger.warning("No NOC optical module full data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from NOC API")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load NOC optical module full data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("NOC optical module full data load completed (status=0)")
