@@ -394,3 +394,45 @@
 2025-10-22 01:08:38,518 - __main__ - DEBUG - Read 309 rows from table 网络设备故障表
 2025-10-22 01:08:38,610 - __main__ - INFO - Exported table 网络设备故障表 to sheet in output\database_export_20251022_010829.xlsx
 2025-10-22 01:08:44,145 - __main__ - INFO - Database exported to output\database_export_20251022_010829.xlsx (status=0)
+2025-10-22 01:22:47,684 - __main__ - DEBUG - Output directory ensured: output
+2025-10-22 01:22:47,685 - __main__ - INFO - Found 6 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表', '光模块在线总数量统计表', 'ROCE网络事件-网络零件（光模块+AOC）故障表', '网络设备总数量表', '网络设备故障表']
+2025-10-22 01:22:47,840 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-22 01:22:47,842 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-22 01:22:47,857 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:47,857 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-22 01:22:47,865 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-22 01:22:48,000 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:48,000 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-22 01:22:48,004 - __main__ - DEBUG - Read 1133 rows from table 光模块在线总数量统计表
+2025-10-22 01:22:48,046 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:48,046 - __main__ - DEBUG - Columns in table ROCE网络事件-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间']
+2025-10-22 01:22:48,051 - __main__ - DEBUG - Read 883 rows from table ROCE网络事件-网络零件（光模块+AOC）故障表
+2025-10-22 01:22:48,124 - __main__ - INFO - Exported table ROCE网络事件-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:48,125 - __main__ - DEBUG - Columns in table 网络设备总数量表: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-22 01:22:48,202 - __main__ - DEBUG - Read 16453 rows from table 网络设备总数量表
+2025-10-22 01:22:50,633 - __main__ - INFO - Exported table 网络设备总数量表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:50,634 - __main__ - DEBUG - Columns in table 网络设备故障表: ['事件ID', '事件类型', '事件名称', '设备主机名', '机房', '集群', '客户', '设备槽位', '描述', '开始时间', '认领时间', '建单时间', '结束时间', 'NOC工单ID', '外包工单ID', '工单故障类型']
+2025-10-22 01:22:50,641 - __main__ - DEBUG - Read 309 rows from table 网络设备故障表
+2025-10-22 01:22:50,704 - __main__ - INFO - Exported table 网络设备故障表 to sheet in output\database_export_20251022_012247.xlsx
+2025-10-22 01:22:55,615 - __main__ - INFO - Database exported to output\database_export_20251022_012247.xlsx (status=0)
+2025-10-22 01:40:33,555 - __main__ - DEBUG - Output directory ensured: output
+2025-10-22 01:40:33,557 - __main__ - INFO - Found 6 tables in custom_database.db: ['光模块故障表', '事件监控-光模块故障表', '光模块在线总数量统计表', '网络设备总数量表', '网络设备故障表', 'ROCE下联-网络零件（光模块+AOC）故障表']
+2025-10-22 01:40:33,765 - __main__ - DEBUG - Columns in table 光模块故障表: ['日期', '型号', '厂商', '总数量', '在线数', '故障数', '故障率1_故障_总数', '故障率2_故障_在线']
+2025-10-22 01:40:33,767 - __main__ - DEBUG - Read 348 rows from table 光模块故障表
+2025-10-22 01:40:33,785 - __main__ - INFO - Exported table 光模块故障表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:33,786 - __main__ - DEBUG - Columns in table 事件监控-光模块故障表: ['事件ID', '事件类型', '事件名称', '开始时间', '隔离时间', '结束时间', '设备主机名', '设备端口名称', '光模块型号', '光模块厂商', '机房', '集群', '客户', '故障数', '认领时间', '建单时间', '操作时间']
+2025-10-22 01:40:33,795 - __main__ - DEBUG - Read 1333 rows from table 事件监控-光模块故障表
+2025-10-22 01:40:33,931 - __main__ - INFO - Exported table 事件监控-光模块故障表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:33,931 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '机房', '集群', '客户', '在线总数量']
+2025-10-22 01:40:33,935 - __main__ - DEBUG - Read 1133 rows from table 光模块在线总数量统计表
+2025-10-22 01:40:33,999 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:34,000 - __main__ - DEBUG - Columns in table 网络设备总数量表: ['设备主机名', '厂商', '型号', '设备SN', '机房', '机柜位', '管理IP', '集群', '客户', '状态', '是否过保', '维保到期时间', '更新时间']
+2025-10-22 01:40:34,088 - __main__ - DEBUG - Read 16453 rows from table 网络设备总数量表
+2025-10-22 01:40:35,560 - __main__ - INFO - Exported table 网络设备总数量表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:35,561 - __main__ - DEBUG - Columns in table 网络设备故障表: ['事件ID', '事件类型', '事件名称', '设备主机名', '机房', '集群', '客户', '设备槽位', '描述', '开始时间', '认领时间', '建单时间', '结束时间', 'NOC工单ID', '外包工单ID', '工单故障类型']
+2025-10-22 01:40:35,567 - __main__ - DEBUG - Read 309 rows from table 网络设备故障表
+2025-10-22 01:40:35,626 - __main__ - INFO - Exported table 网络设备故障表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:35,627 - __main__ - DEBUG - Columns in table ROCE下联-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间']
+2025-10-22 01:40:35,635 - __main__ - DEBUG - Read 883 rows from table ROCE下联-网络零件（光模块+AOC）故障表
+2025-10-22 01:40:35,797 - __main__ - INFO - Exported table ROCE下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251022_014033.xlsx
+2025-10-22 01:40:43,210 - __main__ - INFO - Database exported to output\database_export_20251022_014033.xlsx (status=0)

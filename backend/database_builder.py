@@ -236,6 +236,53 @@ class DatabaseBuilder:
         finally:
             conn.close()
 
+    def drop_tables(self, table_names: List[str]) -> Dict[str, Any]:
+        """
+        删除数据库中的指定数据表
+
+        Args:
+            table_names (List[str]): 要删除的数据表名称列表
+
+        Returns:
+            Dict[str, Any]: {'status': int, 'errors': List[str]} where status is 0 (success) or 1 (failure),
+                            and errors lists any issues encountered.
+
+        Raises:
+            sqlite3.Error: If critical database operations fail.
+        """
+        errors = []
+        status = 0
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+
+            for table_name in table_names:
+                try:
+                    # 检查表是否存在
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+                    if cursor.fetchone():
+                        # 删除表
+                        cursor.execute(f"DROP TABLE {self.quote_name(table_name)}")
+                        logger.info(f"Dropped table {table_name}")
+                    else:
+                        logger.warning(f"Table {table_name} does not exist")
+                except sqlite3.Error as e:
+                    logger.error(f"Failed to drop table {table_name}: {e} (status=1)")
+                    errors.append(f"Failed to drop table {table_name}: {e}")
+                    status = 1
+                    continue
+
+            conn.commit()
+            logger.info(f"Dropped tables: {table_names} (status={status})")
+            return {"status": status, "errors": errors}
+
+        except sqlite3.Error as e:
+            logger.error(f"Critical database operation failed: {e} (status=1)")
+            errors.append(f"Critical database error: {e}")
+            return {"status": 1, "errors": errors}
+        finally:
+            conn.close()
+
 if __name__ == "__main__":
     from data_loader import ExcelDataSourceLoader, APIDataSourceLoader, OpticalFailureDataSourceLoader, OpticalModuleInventoryDataSourceLoader, RoceEventDataSourceLoader, NetworkDeviceInventoryDataSourceLoader, NetworkDeviceFailureDataSourceLoader
     data_sources = [
