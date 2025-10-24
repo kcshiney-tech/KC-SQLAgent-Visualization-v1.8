@@ -170,6 +170,7 @@ def clean_column_name(col: str) -> str:
     col = col.strip().strip('"').strip("'").strip('"')
     
     return col if col else "Unknown"
+    
 
 def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str = "") -> List[Dict]:
     """Format SQL results into sub-tables based on logical groupings or agent suggestion."""
@@ -219,6 +220,7 @@ def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str =
         logger.error(f"Table formatting failed: {traceback.format_exc()}")
         return [{"title": "Query Results", "data": cleaned_result}]
 
+
 def agent_node(state: State, tools) -> Dict:
     """Agent node: Invokes the LLM with tools bound."""
     try:
@@ -246,6 +248,119 @@ def agent_node(state: State, tools) -> Dict:
 
 def tool_node(state: State, tools) -> Dict:
     """Tool node: Executes the called tool and handles SQL query results."""
+
+    import re
+    from typing import List
+
+    def _strip_quotes(name: str) -> str:
+        if not isinstance(name, str):
+            return name
+        name = name.strip()
+        if (name.startswith('"') and name.endswith('"')) or (name.startswith("'") and name.endswith("'")):
+            return name[1:-1]
+        if name.startswith("`") and name.endswith("`"):
+            return name[1:-1]
+        return name
+
+    def _split_top_level_commas(s: str) -> List[str]:
+        """
+        按顶层逗号分割（不会切割在括号内的逗号）。
+        更稳健：逐字符扫描并追踪括号 depth。
+        """
+        if s is None:
+            return []
+        parts = []
+        cur = []
+        depth = 0
+        in_single = False
+        in_double = False
+        for ch in s:
+            # handle quote toggles (skip splitting inside quotes)
+            if ch == "'" and not in_double:
+                in_single = not in_single
+                cur.append(ch)
+                continue
+            if ch == '"' and not in_single:
+                in_double = not in_double
+                cur.append(ch)
+                continue
+            if in_single or in_double:
+                cur.append(ch)
+                continue
+            if ch == '(':
+                depth += 1
+                cur.append(ch)
+                continue
+            if ch == ')':
+                if depth > 0:
+                    depth -= 1
+                cur.append(ch)
+                continue
+            if ch == ',' and depth == 0:
+                parts.append(''.join(cur).strip())
+                cur = []
+                continue
+            cur.append(ch)
+        if cur:
+            parts.append(''.join(cur).strip())
+        return parts
+
+    def _extract_alias_from_item(item: str) -> str:
+        """
+        多策略提取 alias：
+        1) 尝试 r'\\bAS\s+...'（支持 ` " ' 或无引号）
+        2) 尝试行末直接的 alias（如 `... ) 占比` 或 `... ) AS 占比` 被换行分隔的情形）
+        3) 移除括号内容后取最后 token（若该 token 看起来像中文或字母数字）
+        4) 若没有则返回 None
+        """
+        if not item or not isinstance(item, str):
+            return None
+        # normalize whitespace
+        s = item.strip()
+        # 1) AS alias
+        m = re.search(r'\bAS\s+(`[^`]+`|"[^"]+"|\'[^\']+\'|[^\s,()]+)', s, flags=re.IGNORECASE | re.UNICODE)
+        if m:
+            return _strip_quotes(m.group(1).strip())
+        # 2) 如果 AS 未命中，尝试在末尾查找实际 alias（包括换行情况）
+        #    查找末尾连续的中文/英文/数字/下划线/短横
+        m2 = re.search(r'([A-Za-z0-9_\-\u4e00-\u9fff]+)\s*$', s)
+        if m2:
+            candidate = m2.group(1)
+            # 如果候选是 SQL 关键字或函数名则拒绝
+            if candidate.upper() not in ("COUNT", "SUM", "MAX", "MIN", "ROUND", "AVG", "DISTINCT", "CASE", "WHEN", "THEN"):
+                return _strip_quotes(candidate)
+        # 3) 去掉括号内容再取最后 token
+        no_paren = re.sub(r'\([^()]*\)', '', s)
+        tokens = re.split(r'\s+', no_paren.strip())
+        if tokens:
+            candidate = tokens[-1]
+            candidate = re.sub(r'[^0-9A-Za-z\u4e00-\u9fff_\-]', '', candidate)
+            if candidate:
+                if candidate.upper() not in ("COUNT", "SUM", "MAX", "MIN", "ROUND", "AVG", "DISTINCT"):
+                    return _strip_quotes(candidate)
+        return None
+
+    def _extract_select_aliases(select_part: str, expected_count: int) -> List[str]:
+        """
+        从 SELECT 部分（SELECT 到 FROM）提取每一列的 alias。
+        返回长度为 expected_count 的列表（不足用 colN 填充）。
+        """
+        if not select_part:
+            return [f"col{i}" for i in range(expected_count)]
+        items = _split_top_level_commas(select_part)
+        aliases = []
+        for it in items:
+            alias = _extract_alias_from_item(it)
+            aliases.append(alias)
+        final = []
+        for i in range(expected_count):
+            if i < len(aliases) and aliases[i]:
+                final.append(aliases[i])
+            else:
+                final.append(f"col{i}")
+        return final
+
+    
     try:
         messages = state["messages"]
         last_message = messages[-1]
@@ -303,33 +418,60 @@ def tool_node(state: State, tools) -> Dict:
                 if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
                     # already list of dicts
                     sql_result = parsed
+                
+                # 在你的解析流程里，当 parsed 是 list of tuples 时，使用如下代码来构造 sql_result:
+                # 当 parsed 为 list of tuples 时（parsed 已由 json.loads/ast.literal_eval 等解析出）
                 elif isinstance(parsed, list) and parsed and isinstance(parsed[0], (list, tuple)):
-                    # list of tuples: need column names to zip
                     tuples = [list(t) for t in parsed]
-                    query = tool_call["args"].get("query", "")
-                    # extract select part preserving case and aliases
+                    # 获取原始 query（若 tool_call 中 args 有 query 字段）
+                    query = ""
+                    if isinstance(tool_call, dict):
+                        query = tool_call.get("args", {}).get("query", "") or tool_call.get("args", {}).get("sql", "") or ""
                     select_part = ""
-                    if "SELECT" in query.upper() and "FROM" in query.upper():
-                        # 保留原 query 的大小写，先找 SELECT 到 FROM
+                    if isinstance(query, str) and "SELECT" in query.upper() and "FROM" in query.upper():
                         try:
-                            # 使用分割保留原
                             select_part = re.split(r'\bSELECT\b', query, flags=re.IGNORECASE, maxsplit=1)[1]
                             select_part = re.split(r'\bFROM\b', select_part, flags=re.IGNORECASE, maxsplit=1)[0]
                         except Exception:
                             select_part = ""
-                    # 切分列（避免括号内逗号被切分）
-                    if select_part:
-                        cols = re.split(r',\s*(?![^()]*\))', select_part)
-                        cols = [clean_column_name(c.strip()) for c in cols if c.strip()]
-                    else:
-                        cols = []
-                    # If columns count matches tuple length use them; otherwise fallback to generic names
+                    expected_count = len(tuples[0])
+                    aliases = _extract_select_aliases(select_part, expected_count)
+                    logger.debug(f"Extracted column aliases: {aliases}")
+                    sql_result = []
                     for row in tuples:
-                        if cols and len(cols) == len(row):
-                            sql_result.append(dict(zip(cols, row)))
-                        else:
-                            # fallback: name columns as col0, col1...
-                            sql_result.append({f"col{i}": row[i] for i in range(len(row))})
+                        d = {}
+                        for i, val in enumerate(row):
+                            col_name = aliases[i] if i < len(aliases) else f"col{i}"
+                            d[col_name] = val
+                        sql_result.append(d)
+                                
+                # elif isinstance(parsed, list) and parsed and isinstance(parsed[0], (list, tuple)):
+                #     # list of tuples: need column names to zip
+                #     tuples = [list(t) for t in parsed]
+                #     query = tool_call["args"].get("query", "")
+                #     # extract select part preserving case and aliases
+                #     select_part = ""
+                #     if "SELECT" in query.upper() and "FROM" in query.upper():
+                #         # 保留原 query 的大小写，先找 SELECT 到 FROM
+                #         try:
+                #             # 使用分割保留原
+                #             select_part = re.split(r'\bSELECT\b', query, flags=re.IGNORECASE, maxsplit=1)[1]
+                #             select_part = re.split(r'\bFROM\b', select_part, flags=re.IGNORECASE, maxsplit=1)[0]
+                #         except Exception:
+                #             select_part = ""
+                #     # 切分列（避免括号内逗号被切分）
+                #     if select_part:
+                #         cols = re.split(r',\s*(?![^()]*\))', select_part)
+                #         cols = [clean_column_name(c.strip()) for c in cols if c.strip()]
+                #     else:
+                #         cols = []
+                #     # If columns count matches tuple length use them; otherwise fallback to generic names
+                #     for row in tuples:
+                #         if cols and len(cols) == len(row):
+                #             sql_result.append(dict(zip(cols, row)))
+                #         else:
+                #             # fallback: name columns as col0, col1...
+                #             sql_result.append({f"col{i}": row[i] for i in range(len(row))})
                 elif isinstance(parsed, dict):
                     # single dict -> wrap
                     sql_result = [parsed]

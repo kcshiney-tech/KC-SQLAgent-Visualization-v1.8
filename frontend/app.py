@@ -129,7 +129,7 @@ def render_dashboard():
                     if result["tables"]:
                         for table in result["tables"]:
                             st.write(f"**{table['title']}**")
-                            st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
+                            st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                     if result["chart_config"]:
                         # Render Chart.js with unique canvas ID
                         chart_id = f"chart_{uuid.uuid4().hex}"
@@ -259,7 +259,7 @@ with tab1:
                     if isinstance(message, AIMessage) and hasattr(message, "tables"):
                         for table in message.tables:
                             st.write(f"**{table['title']}**")
-                            st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
+                            st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                     if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
                         # Render Chart.js with unique canvas ID
                         chart_id = f"chart_{uuid.uuid4().hex}"
@@ -325,7 +325,7 @@ with tab1:
                         if result["tables"]:
                             for table in result["tables"]:
                                 st.write(f"**{table['title']}**")
-                                st.dataframe(pd.DataFrame(table["data"]), use_container_width=True)
+                                st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                         if result["chart_config"]:
                             # Render Chart.js with unique canvas ID
                             chart_id = f"chart_{uuid.uuid4().hex}"
