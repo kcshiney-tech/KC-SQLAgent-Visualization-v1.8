@@ -2,6 +2,7 @@
 """
 Utilities for choosing and formatting visualization data based on SQL results and conversation context.
 """
+import ast
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from typing import Dict, List
@@ -10,6 +11,7 @@ import traceback
 from dotenv import load_dotenv
 import os
 import json
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +52,25 @@ def initialize_llm() -> ChatOpenAI:
 
 llm = initialize_llm()
 
+def _extract_json_substring(s: str):
+    """尝试从文本中提取第一个 JSON 对象或数组字符串（包括被 ``` 包裹的情形）。"""
+    if not s or not isinstance(s, str):
+        return None
+    # 去掉 markdown code fence
+    s_clean = re.sub(r"```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+    s_clean = re.sub(r"\s*```", "", s_clean, flags=re.IGNORECASE).strip()
+
+    # 首先尝试直接找到 {...} 或 [...] 的第一段
+    m_obj = re.search(r'(\{.*\})', s_clean, flags=re.S)
+    m_arr = re.search(r'(\[.*\])', s_clean, flags=re.S)
+    # 优先对象
+    if m_obj:
+        return m_obj.group(1)
+    if m_arr:
+        return m_arr.group(1)
+    # 如果整段就是裸 JSON-like 则返回整段
+    return s_clean
+
 def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", tool_history: str = "") -> str:
     """Choose visualization type based on question, SQL result, and conversation/tool history, considering user intent."""
     try:
@@ -78,21 +99,62 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
         sample_result = json.dumps(sql_result[:3])
         logger.debug(f"Choosing viz type with question: {question}, history: {history}, tool_history: {tool_history}, sample_result: {sample_result}")
         response = chain.invoke({"question": question, "history": history, "tool_history": tool_history, "sample_result": sample_result, "viz_types": ", ".join(viz_types)})
-        logger.debug(f"LLM response content: {response.content}")
+        content = response.content if hasattr(response, "content") else str(response)
+        logger.debug(f"LLM response content: {content}")
         try:
-            response_json = json.loads(response.content)
-            viz_type = response_json.get("viz_type", "none").lower()
+            # ------ 1) 先尝试从 response.content 中抽出 JSON 子串并解析 ------
+            viz_type = None
+            json_sub = _extract_json_substring(content)
+            if json_sub:
+                try:
+                    parsed = json.loads(json_sub)
+                    if isinstance(parsed, dict) and "viz_type" in parsed:
+                        viz_type = str(parsed["viz_type"]).lower()
+                except Exception:
+                    # 不是严格的 JSON，再尝试 ast.literal_eval（python literal）
+                    try:
+                        parsed2 = ast.literal_eval(json_sub)
+                        if isinstance(parsed2, dict) and "viz_type" in parsed2:
+                            viz_type = str(parsed2["viz_type"]).lower()
+                    except Exception:
+                        viz_type = None
+
+            # ------ 2) 如果仍无效，尝试直接在纯文本中用关键词启发式判断 ------
+            if not viz_type:
+                low = (question or "").lower() + " " + (history or "").lower() + " " + (tool_history or "").lower()
+                if any(k in low for k in ["trend", "over time", "over the", "last", "month", "week", "day", "时间", "趋势", "周为单位", "月为单位", "按时间","按天","按周","按月"]):
+                    viz_type = "line"
+                elif any(k in low for k in ["compare", "top", "rank", "by", "group", "分布", "按"]):
+                    viz_type = "bar"
+                elif any(k in low for k in ["percent", "proportion", "percentage", "占比", "比例"]):
+                    viz_type = "pie"
+                elif any(k in low for k in ["correlat", "correlation", "scatter", "相关性", "散点"]):
+                    viz_type = "scatter"
+                else:
+                    viz_type = "none"
+
             if viz_type not in viz_types:
-                logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'bar' for comparison queries")
-                viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
-        except json.JSONDecodeError:
-            logger.warning("LLM returned invalid JSON, defaulting to 'bar' for comparison queries")
-            viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
-        logger.info(f"Chosen viz type: {viz_type}")
-        return viz_type
+                viz_type = "none"
+
+            logger.info(f"Chosen viz type: {viz_type}")
+            return viz_type
+        except Exception as e:
+            logger.error(f"Viz type choice failed: {traceback.format_exc()}")
+            return "none"
     except Exception as e:
         logger.error(f"Viz type choice failed: {traceback.format_exc()}")
         return "none"
+
+    #         viz_type = response_json.get("viz_type", "none").lower()
+    #         if viz_type not in viz_types:
+    #             logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'bar' for comparison queries")
+    #             viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
+    #     except json.JSONDecodeError:
+    #         logger.warning("LLM returned invalid JSON, defaulting to 'bar' for comparison queries")
+    #         viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
+    #     logger.info(f"Chosen viz type: {viz_type}")
+    #     return viz_type
+    
 
 def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
     """Format SQL result for Chart.js based on visualization type."""
