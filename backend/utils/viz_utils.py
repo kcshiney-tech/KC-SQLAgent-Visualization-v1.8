@@ -156,7 +156,7 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
     #     return viz_type
     
 
-def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
+def format_data_for_viz_old(viz_type: str, sql_result: List[Dict]) -> Dict:
     """Format SQL result for Chart.js based on visualization type."""
     try:
         if viz_type == "none" or not sql_result:
@@ -382,6 +382,202 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
         else:
             logger.error(f"Unsupported viz type: {viz_type}")
             return {}
+    except Exception as e:
+        logger.error(f"Data formatting failed: {traceback.format_exc()}")
+        return {}
+    
+def _try_cast_float(v):
+    """尝试把值转为 float，失败返回 None（把 '123', '1e3' 等字符串视作数字）。"""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    try:
+        s = str(v).strip()
+        # 排除空字符串和非数字占位
+        if s == "" or s.lower() in ["nan", "none", "null", "na", "n/a"]:
+            return None
+        # 处理百分号字符串：例如 "12.3%" -> 12.3
+        if s.endswith("%"):
+            return float(s.rstrip("%"))  # 返回百分数的原值（如 12.3）
+        return float(s)
+    except Exception:
+        return None
+
+def _looks_like_date(s: str) -> bool:
+    """非常轻量的日期检测（识别 'YYYY-MM-DD', 'YYYY/MM/DD', '2025-10-22 12:00' 等）。"""
+    if not isinstance(s, str):
+        return False
+    s = s.strip()
+    # 简单模式
+    if re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}', s):
+        return True
+    # 带时间部分
+    if re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:', s):
+        return True
+    return False
+
+def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
+    """Format SQL result for Chart.js based on visualization type (更鲁棒的列识别与标题生成)."""
+    try:
+        if viz_type == "none" or not sql_result:
+            logger.debug("No visualization or empty result, returning empty dict")
+            return {}
+
+        if not isinstance(sql_result, list) or not all(isinstance(row, dict) for row in sql_result):
+            logger.error(f"Invalid SQL result format: {type(sql_result)}")
+            return {}
+
+        keys = list(sql_result[0].keys())
+        logger.debug(f"SQL result keys: {keys}")
+        if not keys:
+            return {}
+
+        # --- 识别数值列 & 类别列（支持数字字符串） ---
+        numeric_cols = []
+        categorical_cols = []
+        date_cols = []
+        for k in keys:
+            values = [row.get(k) for row in sql_result]
+            if any(_try_cast_float(v) is not None for v in values):
+                numeric_cols.append(k)
+            elif any(isinstance(v, str) for v in values):
+                categorical_cols.append(k)
+            # 日期检测优先级：如果字符串看起来像日期，则标记为日期
+            if any(_looks_like_date(v) for v in values if isinstance(v, str)):
+                date_cols.append(k)
+
+        # 选择 x (label) 和 y (value)
+        label_col = None
+        value_col = None
+
+        # 优先：如果是时间序列且 viz_type 是 line 或样子上需要趋势，则把日期列作为 x
+        if viz_type == "line" and date_cols:
+            label_col = date_cols[0]
+        # 否则：优先选类别列作为 x
+        if not label_col:
+            if categorical_cols:
+                label_col = categorical_cols[0]
+            elif keys:
+                # 没有类别列，选择第一个非数值列或第一个列作为 label
+                non_numeric = [k for k in keys if k not in numeric_cols]
+                label_col = non_numeric[0] if non_numeric else keys[0]
+
+        # y 选择数值列（优先最近的 numeric 列）
+        if numeric_cols:
+            value_col = numeric_cols[0]
+        else:
+            # 如果找不到数值列，尝试将第二列强转为数值
+            if len(keys) > 1:
+                value_col = keys[1]
+            else:
+                value_col = keys[0]
+
+        # 生成 labels 和 values（支持数值字符串）
+        def to_label(v):
+            return "" if v is None else str(v)
+
+        labels = [to_label(row.get(label_col)) for row in sql_result]
+        values = []
+        for row in sql_result:
+            cast = _try_cast_float(row.get(value_col))
+            values.append(cast if cast is not None else 0.0)
+
+        # 如果全部为 0 或无效，则认为无法绘图
+        if not any(v != 0.0 for v in values):
+            logger.warning("All values are zero or non-numeric, returning empty viz data")
+            return {}
+
+        # 自动生成图表标题文本
+        title_text = f"{value_col} by {label_col}" if label_col and value_col and label_col != value_col else f"{value_col}"
+
+        # 生成不同类型的 Chart.js config（保留你原有结构，但改用自动推断的列名/labels/values）
+        if viz_type == "bar":
+            chart_config = {
+                "type": "bar",
+                "data": {
+                    "labels": labels,
+                    "datasets": [{
+                        "label": value_col,
+                        "data": values,
+                        # 不在代码里固定颜色会影响展示一致性，这里保留一组可重复的 palette（可按需换成随机）
+                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"] * 10,
+                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"] * 10,
+                        "borderWidth": 1
+                    }]
+                },
+                "options": {
+                    "indexAxis": "x",
+                    "responsive": True,
+                    "maintainAspectRatio": False,
+                    "scales": {
+                        "y": {
+                            "beginAtZero": True,
+                            "title": {"display": True, "text": value_col}
+                        },
+                        "x": {
+                            "title": {"display": True, "text": label_col}
+                        }
+                    },
+                    "plugins": {
+                        "title": {"display": True, "text": title_text},
+                        "legend": {"display": False}
+                    }
+                }
+            }
+            return chart_config
+
+        if viz_type == "line":
+            return {
+                "type": "line",
+                "data": {"labels": labels, "datasets": [{"label": value_col, "data": values, "fill": False}]},
+                "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
+                    "scales": {
+                        "x": {"title": {"display": True, "text": label_col}},
+                        "y": {"beginAtZero": True, "title": {"display": True, "text": value_col}}
+                    },
+                    "plugins": {"title": {"display": True, "text": title_text}}
+                }
+            }
+
+        if viz_type == "pie":
+            return {
+                "type": "pie",
+                "data": {"labels": labels, "datasets": [{"label": value_col, "data": values, "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"]} ]},
+                "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
+                    "plugins": {"title": {"display": True, "text": title_text}, "legend": {"display": True}}
+                }
+            }
+
+        if viz_type == "scatter":
+            # 需要两个 numeric 列
+            numeric_found = [c for c in keys if any(_try_cast_float(r.get(c)) is not None for r in sql_result)]
+            if len(numeric_found) < 2:
+                logger.warning("Need at least two numeric columns for scatter plot, returning empty viz data")
+                return {}
+            x_key, y_key = numeric_found[0], numeric_found[1]
+            series = [{"x": _try_cast_float(r.get(x_key)), "y": _try_cast_float(r.get(y_key))} for r in sql_result if (_try_cast_float(r.get(x_key)) is not None and _try_cast_float(r.get(y_key)) is not None)]
+            if not series:
+                logger.warning("No valid numeric pairs for scatter plot, returning empty viz data")
+                return {}
+            return {
+                "type": "scatter",
+                "data": {"datasets": [{"label": f"{y_key} vs {x_key}", "data": series}]},
+                "options": {
+                    "responsive": True,
+                    "maintainAspectRatio": False,
+                    "scales": {"x": {"title": {"display": True, "text": x_key}}, "y": {"title": {"display": True, "text": y_key}}},
+                    "plugins": {"title": {"display": True, "text": f"{y_key} vs {x_key}"}}
+                }
+            }
+
+        # 不支持的情况
+        logger.error(f"Unsupported viz type: {viz_type}")
+        return {}
     except Exception as e:
         logger.error(f"Data formatting failed: {traceback.format_exc()}")
         return {}

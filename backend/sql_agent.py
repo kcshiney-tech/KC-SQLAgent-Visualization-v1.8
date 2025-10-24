@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import sys
 import ast
+import json
 from datetime import datetime, date
 import time
 import re
@@ -255,34 +256,124 @@ def tool_node(state: State, tools) -> Dict:
         tool_result = tool.invoke(tool_call["args"])
         logger.debug(f"Tool {tool_call['name']} result: {tool_result} (type: {type(tool_result)})")
         sql_result = state.get("sql_result", [])
+        # 在 tool_node 中，替换原有处理 sql_db_query 的 try/except 分支为以下实现片段
         if tool_call["name"] == "sql_db_query":
             try:
-                if isinstance(tool_result, str):
-                    parsed_result = ast.literal_eval(tool_result)
-                    if isinstance(parsed_result, list) and all(isinstance(item, tuple) for item in parsed_result):
-                        query = tool_call["args"]["query"]
-                        # Extract column names from the query more robustly
-                        query_upper = query.upper()
-                        if "SELECT" in query_upper:
-                            select_part = query_upper.split("SELECT")[1].split("FROM")[0].strip()
-                            # Handle quoted column names
-                            columns = re.findall(r'"[^"]*"|\'[^\']*\'|[^,\s]+', select_part)
-                            columns = [col.strip().strip('"').strip("'") for col in columns]
-                        else:
-                            # Fallback: use the first row's keys if available
-                            columns = list(sql_result[0].keys()) if sql_result else []
-                        
-                        # Clean column names
-                        cleaned_columns = [clean_column_name(col) for col in columns]
-                        sql_result = [dict(zip(cleaned_columns, row)) for row in parsed_result]
-                    else:
-                        sql_result = parsed_result if isinstance(parsed_result, list) else []
+                # handle different tool_result types robustly
+                parsed = None
+
+                # If tool returned already a Python list/dict (some toolkits do), accept directly
+                if isinstance(tool_result, (list, dict)):
+                    parsed = tool_result
+                elif isinstance(tool_result, str):
+                    txt = tool_result.strip()
+                    # 1. 尝试解析为 JSON
+                    try:
+                        parsed = json.loads(txt)
+                    except Exception:
+                        # 2. 尝试 ast.literal_eval（python literal）
+                        try:
+                            parsed = ast.literal_eval(txt)
+                        except Exception:
+                            # 3. 尝试从字符串中抽取首个 JSON/array 子串再解析
+                            m = re.search(r'(\[.*\])', txt, flags=re.S)
+                            if m:
+                                try:
+                                    parsed = ast.literal_eval(m.group(1))
+                                except Exception:
+                                    try:
+                                        parsed = json.loads(m.group(1))
+                                    except Exception:
+                                        parsed = None
+                            else:
+                                m2 = re.search(r'(\{.*\})', txt, flags=re.S)
+                                if m2:
+                                    try:
+                                        parsed = ast.literal_eval(m2.group(1))
+                                    except Exception:
+                                        try:
+                                            parsed = json.loads(m2.group(1))
+                                        except Exception:
+                                            parsed = None
                 else:
-                    sql_result = tool_result if isinstance(tool_result, list) else []
+                    parsed = None
+
+                # Normalize parsed into a list of dicts
+                sql_result = []
+                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                    # already list of dicts
+                    sql_result = parsed
+                elif isinstance(parsed, list) and parsed and isinstance(parsed[0], (list, tuple)):
+                    # list of tuples: need column names to zip
+                    tuples = [list(t) for t in parsed]
+                    query = tool_call["args"].get("query", "")
+                    # extract select part preserving case and aliases
+                    select_part = ""
+                    if "SELECT" in query.upper() and "FROM" in query.upper():
+                        # 保留原 query 的大小写，先找 SELECT 到 FROM
+                        try:
+                            # 使用分割保留原
+                            select_part = re.split(r'\bSELECT\b', query, flags=re.IGNORECASE, maxsplit=1)[1]
+                            select_part = re.split(r'\bFROM\b', select_part, flags=re.IGNORECASE, maxsplit=1)[0]
+                        except Exception:
+                            select_part = ""
+                    # 切分列（避免括号内逗号被切分）
+                    if select_part:
+                        cols = re.split(r',\s*(?![^()]*\))', select_part)
+                        cols = [clean_column_name(c.strip()) for c in cols if c.strip()]
+                    else:
+                        cols = []
+                    # If columns count matches tuple length use them; otherwise fallback to generic names
+                    for row in tuples:
+                        if cols and len(cols) == len(row):
+                            sql_result.append(dict(zip(cols, row)))
+                        else:
+                            # fallback: name columns as col0, col1...
+                            sql_result.append({f"col{i}": row[i] for i in range(len(row))})
+                elif isinstance(parsed, dict):
+                    # single dict -> wrap
+                    sql_result = [parsed]
+                else:
+                    # if parsed is None or empty, try to accept tool_result if it's already structured as Python object
+                    if isinstance(tool_result, list):
+                        sql_result = tool_result
+                    else:
+                        sql_result = []
+
                 logger.debug(f"Parsed sql_result: {sql_result}")
             except Exception as e:
                 logger.error(f"Failed to parse sql_db_query result: {traceback.format_exc()}")
                 sql_result = []
+        
+        
+        # if tool_call["name"] == "sql_db_query":
+        #     try:
+        #         if isinstance(tool_result, str):
+        #             parsed_result = ast.literal_eval(tool_result)
+        #             if isinstance(parsed_result, list) and all(isinstance(item, tuple) for item in parsed_result):
+        #                 query = tool_call["args"]["query"]
+        #                 # Extract column names from the query more robustly
+        #                 query_upper = query.upper()
+        #                 if "SELECT" in query_upper:
+        #                     select_part = query_upper.split("SELECT")[1].split("FROM")[0].strip()
+        #                     # Handle quoted column names
+        #                     columns = re.findall(r'"[^"]*"|\'[^\']*\'|[^,\s]+', select_part)
+        #                     columns = [col.strip().strip('"').strip("'") for col in columns]
+        #                 else:
+        #                     # Fallback: use the first row's keys if available
+        #                     columns = list(sql_result[0].keys()) if sql_result else []
+                        
+        #                 # Clean column names
+        #                 cleaned_columns = [clean_column_name(col) for col in columns]
+        #                 sql_result = [dict(zip(cleaned_columns, row)) for row in parsed_result]
+        #             else:
+        #                 sql_result = parsed_result if isinstance(parsed_result, list) else []
+        #         else:
+        #             sql_result = tool_result if isinstance(tool_result, list) else []
+        #         logger.debug(f"Parsed sql_result: {sql_result}")
+        #     except Exception as e:
+        #         logger.error(f"Failed to parse sql_db_query result: {traceback.format_exc()}")
+        #         sql_result = []
         # Store tool call and result in history
         tool_history = state.get("tool_history", []) + [{"tool": tool_call["name"], "input": tool_call["args"], "output": str(tool_result)}]
         return {
