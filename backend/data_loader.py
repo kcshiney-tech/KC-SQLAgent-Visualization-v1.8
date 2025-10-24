@@ -357,3 +357,37 @@ class NOCOpticalModuleFullDataSourceLoader(DataSourceLoader):
             raise
         finally:
             logger.info("NOC optical module full data load completed (status=0)")
+
+
+class XLSXRoceNetworkPartFaultDataSourceLoader(DataSourceLoader):
+    """Loader for XLSX ROCE network part fault data."""
+    
+    def __init__(self, file_path: str, table_name: str = "ROCE-TOR下联-网络零件（光模块+AOC）故障表"):
+        try:
+            self.file_path = file_path
+            self.table_name = table_name
+            logger.debug(f"Initialized XLSXRoceNetworkPartFaultDataSourceLoader with file {file_path} and table {table_name}")
+        except Exception as e:
+            logger.error(f"Initialization failed: {traceback.format_exc()}")
+            raise
+
+    def load_data(self) -> List[Dict[str, Any]]:
+        try:
+            logger.debug(f"Loading XLSX ROCE network part fault data from {self.file_path}")
+            # 导入处理函数
+            from backend.dataSources.xlsx_roce_network_part_fault import process_xlsx_roce_network_part_fault
+            
+            # 获取数据
+            data = process_xlsx_roce_network_part_fault(self.file_path)
+            
+            if not data:
+                logger.warning("No XLSX ROCE network part fault data retrieved (status=1)")
+                return []
+            
+            logger.debug(f"Loaded {len(data)} records from XLSX file")
+            return [{"table_name": self.table_name, "data": data}]
+        except Exception as e:
+            logger.error(f"Failed to load XLSX ROCE network part fault data: {traceback.format_exc()} (status=1)")
+            raise
+        finally:
+            logger.info("XLSX ROCE network part fault data load completed (status=0)")

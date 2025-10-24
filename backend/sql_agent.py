@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import sys
 import ast
+from datetime import datetime, date
 import time
 import re
 from typing import Annotated, List, Dict
@@ -130,7 +131,7 @@ def initialize_tools(db: SQLDatabase) -> List:
         raise
 
 system_prompt = """You are an expert SQL agent interacting with a SQLite database in a conversational manner.
-The current date is {current_date}. For time-sensitive queries involving relative dates (e.g., 'near month', 'recent week', 'last year'), translate them into absolute dates using SQLite date functions like date('now', '-1 month') for 'last month', date('now', '-7 days') for 'last week', etc. Always use 'now' as the reference for current time in queries.
+The current date is {current_date}. For time-sensitive queries involving relative dates (e.g., 'near month', 'recent week', 'last year'), translate them into absolute dates using SQLite date functions like date('now', '-1 month','localtime') for 'last month', date('now', '-7 days','localtime') for 'last week', etc. Always use 'now' as the reference for current time in queries.
 Maintain context from previous messages, including user questions, assistant responses, and tool outputs (e.g., table lists, schemas, query results).
 For each new user question:
 1. Check prior messages for known table or schema information to avoid redundant tool calls.
@@ -220,7 +221,8 @@ def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str =
 def agent_node(state: State, tools) -> Dict:
     """Agent node: Invokes the LLM with tools bound."""
     try:
-        current_date = datetime.date.today()  
+        current_date = date.today()  # 获取当前日期（不含时间） datetime.date(2025, 10, 22)
+        current_datetime = datetime.now()  # 获取当前日期时间 datetime.datetime(2025, 10, 22, 18, 55, 14, 139447)
         formatted_system_prompt = system_prompt.format(current_date=current_date)
         state["status_messages"].append("Analyzing question and generating SQL query...")
         prompt = ChatPromptTemplate.from_messages([
@@ -402,7 +404,7 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholde
 
 if __name__ == "__main__":
     try:
-        db = SQLDatabase.from_uri("sqlite:///custom_database.db")
+        db = SQLDatabase.from_uri("sqlite:///real_database.db")
         graph, _ = build_graph(db)
         print("欢迎使用SQL Agent with Viz！输入您的查询问题（输入 'exit' 或 'quit' 退出）。")
         thread_id = str(uuid.uuid4())

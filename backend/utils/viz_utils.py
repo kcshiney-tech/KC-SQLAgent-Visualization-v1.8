@@ -135,11 +135,12 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
                 return {}
             
             # Improved horizontal bar detection
-            is_horizontal = (
-                len(labels) > 10 or  # Many categories suggest horizontal
-                any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["分布", "按", "by", "group", "compare", "vs"]) or
-                "厂商" in str(label_col) or "型号" in str(label_col)  # Vendor/model distribution
-            )
+            # is_horizontal = (
+            #     len(labels) > 10 or  # Many categories suggest horizontal
+            #     any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["分布", "按", "by", "group", "compare", "vs"]) or
+            #     "厂商" in str(label_col) or "型号" in str(label_col)  # Vendor/model distribution
+            # )
+            is_horizontal = False
             
             chart_config = {
                 "type": "bar",

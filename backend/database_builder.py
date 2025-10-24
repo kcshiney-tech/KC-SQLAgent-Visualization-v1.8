@@ -284,18 +284,20 @@ class DatabaseBuilder:
             conn.close()
 
 if __name__ == "__main__":
-    from data_loader import ExcelDataSourceLoader, APIDataSourceLoader, OpticalFailureDataSourceLoader, OpticalModuleInventoryDataSourceLoader, RoceEventDataSourceLoader, NetworkDeviceInventoryDataSourceLoader, NetworkDeviceFailureDataSourceLoader, NOCOpticalModuleFullDataSourceLoader
+    from data_loader import ExcelDataSourceLoader, APIDataSourceLoader, OpticalFailureDataSourceLoader, OpticalModuleInventoryDataSourceLoader, RoceEventDataSourceLoader, NetworkDeviceInventoryDataSourceLoader, NetworkDeviceFailureDataSourceLoader, NOCOpticalModuleFullDataSourceLoader, XLSXRoceNetworkPartFaultDataSourceLoader
     data_sources = [
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表6", "光模块故障表")]),
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表5", "光模块故障表"),("工作表6", "光模块故障表")])
         # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users"
-        OpticalFailureDataSourceLoader(),
+        # OpticalFailureDataSourceLoader(),
         # OpticalModuleInventoryDataSourceLoader(),  # 使用新的NOC全量数据源替代
-        NOCOpticalModuleFullDataSourceLoader(),
-        RoceEventDataSourceLoader(),
-        NetworkDeviceInventoryDataSourceLoader(),
-        NetworkDeviceFailureDataSourceLoader()
+        # NOCOpticalModuleFullDataSourceLoader(),
+        # RoceEventDataSourceLoader(),
+        # 如果有XLSX文件，可以添加以下数据源
+        XLSXRoceNetworkPartFaultDataSourceLoader("D:\\Code\\KC-SQLAgent-Visualization-v1.8\\roce事件列表_2025-10-23 10_16_19.xlsx_1761185779.xlsx"),
+    #     NetworkDeviceInventoryDataSourceLoader(),
+    #     NetworkDeviceFailureDataSourceLoader()
     ]
-    builder = DatabaseBuilder("custom_database.db")
+    builder = DatabaseBuilder("real_database.db")
     result = builder.build_database(data_sources, rebuild=True)
     print(f"Database build completed with status: {result['status']}, errors: {result['errors']}")

@@ -490,3 +490,33 @@
 2025-10-22 17:59:08,177 - __main__ - DEBUG - Read 1281 rows from table 光模块在线总数量统计表
 2025-10-22 17:59:08,327 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251022_175907.xlsx
 2025-10-22 17:59:08,661 - __main__ - INFO - Database exported to output\database_export_20251022_175907.xlsx (status=0)
+2025-10-22 18:30:21,750 - __main__ - DEBUG - Output directory ensured: output
+2025-10-22 18:30:21,751 - __main__ - INFO - Found 1 tables in test_xlsx_roce_network_part_fault.db: ['ROCE-TOR下联-网络零件（光模块/AOC）故障表']
+2025-10-22 18:30:21,986 - __main__ - DEBUG - Columns in table ROCE-TOR下联-网络零件（光模块/AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-22 18:30:21,995 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块/AOC）故障表
+2025-10-22 18:30:21,999 - __main__ - ERROR - Failed to export table ROCE-TOR下联-网络零件（光模块/AOC）故障表: Invalid character / found in sheet title (status=1)
+2025-10-22 18:30:22,039 - __main__ - INFO - Database exported to output\database_export_20251022_183021.xlsx (status=1)
+2025-10-22 18:32:14,764 - __main__ - DEBUG - Output directory ensured: output
+2025-10-22 18:32:14,766 - __main__ - INFO - Found 1 tables in test_xlsx_roce_network_part_fault.db: ['ROCE-TOR下联-网络零件（光模块+AOC）故障表']
+2025-10-22 18:32:15,050 - __main__ - DEBUG - Columns in table ROCE-TOR下联-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-22 18:32:15,061 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块+AOC）故障表
+2025-10-22 18:32:15,197 - __main__ - INFO - Exported table ROCE-TOR下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251022_183214.xlsx
+2025-10-22 18:32:15,524 - __main__ - INFO - Database exported to output\database_export_20251022_183214.xlsx (status=0)
+2025-10-22 18:44:27,243 - __main__ - DEBUG - Output directory ensured: output
+2025-10-22 18:44:27,247 - __main__ - INFO - Found 2 tables in real_database.db: ['光模块在线总数量统计表', 'ROCE-TOR下联-网络零件（光模块+AOC）故障表']
+2025-10-22 18:44:27,705 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['日期', '光模块型号', '光模块厂商', '状态', '机房', '集群', '客户', '在线总数量']
+2025-10-22 18:44:27,716 - __main__ - DEBUG - Read 1281 rows from table 光模块在线总数量统计表
+2025-10-22 18:44:27,868 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251022_184427.xlsx
+2025-10-22 18:44:27,868 - __main__ - DEBUG - Columns in table ROCE-TOR下联-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-22 18:44:27,888 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块+AOC）故障表
+2025-10-22 18:44:28,107 - __main__ - INFO - Exported table ROCE-TOR下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251022_184427.xlsx
+2025-10-22 18:44:28,788 - __main__ - INFO - Database exported to output\database_export_20251022_184427.xlsx (status=0)
+2025-10-23 10:18:41,488 - __main__ - DEBUG - Output directory ensured: output
+2025-10-23 10:18:41,502 - __main__ - INFO - Found 2 tables in real_database.db: ['光模块在线总数量统计表', 'ROCE-TOR下联-网络零件（光模块+AOC）故障表']
+2025-10-23 10:18:41,953 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['光模块型号', '光模块厂商', '状态', '机房', '集群', '客户', '在线总数量']
+2025-10-23 10:18:41,961 - __main__ - DEBUG - Read 1283 rows from table 光模块在线总数量统计表
+2025-10-23 10:18:42,065 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251023_101841.xlsx
+2025-10-23 10:18:42,066 - __main__ - DEBUG - Columns in table ROCE-TOR下联-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-23 10:18:42,079 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块+AOC）故障表
+2025-10-23 10:18:42,315 - __main__ - INFO - Exported table ROCE-TOR下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251023_101841.xlsx
+2025-10-23 10:18:43,367 - __main__ - INFO - Database exported to output\database_export_20251023_101841.xlsx (status=0)

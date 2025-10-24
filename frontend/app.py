@@ -32,7 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = "custom_database.db"
+DB_PATH = "real_database.db"
 
 # Initialize database and graph
 try:
@@ -101,11 +101,11 @@ def rebuild_db(uploaded_files, sheet_configs=None):
 # Define routine dashboard queries (customize based on your DB schema)
 dashboard_modules = {
     "质量模块": [
-        {"query": "近一个月的光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近一个月光模块故障"},
-        {"query": "近一个月的网络设备故障率，按厂商、型号分布", "title": "近一个月网络设备故障"}
+        # {"query": "近一个月的光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近一个月光模块故障"},
+        # {"query": "近一个月的网络设备故障率，按厂商、型号分布", "title": "近一个月网络设备故障"}
     ],
     "容量模块": [
-        {"query": "近两个月光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近两个月光模块故障"}
+        # {"query": "近两个月光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近两个月光模块故障"}
     ]
 }
 
@@ -161,7 +161,7 @@ def render_dashboard():
                             logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
 # Streamlit UI
-st.title("Text-to-SQL Agent with Data Visualization")
+st.title("灵图SQL视图")
 
 # Tabs for Chat and Dashboard
 tab1, tab2 = st.tabs(["Chat", "Dashboard"])
@@ -248,7 +248,7 @@ with tab1:
     # Chat interface
     chat_container = st.container()
     with chat_container:
-        st.header("Chat with SQL Agent")
+        st.header("灵图SQL对话")
         
         # Display chat history
         for message in st.session_state.chat_history[st.session_state.current_thread_id]:

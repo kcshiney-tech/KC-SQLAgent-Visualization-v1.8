@@ -87,7 +87,7 @@ def fetch_and_process_optical_modules_full() -> List[Dict[str, Any]]:
         # 转换聚合数据为列表
         for (module_type, producer, status, idc, cluster, customer), count in aggregated_data.items():
             processed_data.append({
-                "日期": current_time,
+                # "日期": current_time,
                 "光模块型号": module_type,
                 "光模块厂商": producer,
                 "状态" : status,
