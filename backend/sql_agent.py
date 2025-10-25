@@ -1,7 +1,7 @@
 # sql_agent.py
 """
 SQL Agent with visualization capabilities using LangGraph.
-Handles SQL queries, maintains conversation context, and generates tabular and visual outputs.
+Handles SQL queries, maintains conversation context, and generates tabular and visual outputs with synchronous status updates.
 """
 from datetime import datetime
 import os
@@ -10,7 +10,7 @@ import json
 import time
 import ast
 import re
-from typing import Annotated, List, Dict
+from typing import Annotated, List, Dict, Callable
 from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
@@ -38,6 +38,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler("sql_agent.log", encoding="utf-8"),
+        logging.FileHandler("error.log", encoding="utf-8", mode="a"),  # Dedicated error log
     ],
 )
 logger = logging.getLogger(__name__)
@@ -162,8 +163,8 @@ Args: SELECT c.Country, SUM(i.Total) AS TotalSpent FROM Customers c JOIN Invoice
 Observation: [('USA', 523.06), ('Canada', 303.96), ('France', 195.10), ('Brazil', 190.10), ('Germany', 156.48)]
 Final Answer: The country whose customers spent the most is the USA, with a total of $523.06."""
 
-def agent_node(state: State, tools: List) -> Dict:
-    """Agent node: Decides on tool calls or final response."""
+def agent_node(state: State, tools: List, status_callback: Callable[[str], None] = None) -> Dict:
+    """Agent node: Decides on tool calls or final response, updates status via callback."""
     try:
         current_date = datetime.now().strftime("%Y-%m-%d")
         prompt = ChatPromptTemplate.from_messages([
@@ -173,24 +174,26 @@ def agent_node(state: State, tools: List) -> Dict:
         agent = prompt | llm.bind_tools(tools)
         result = agent.invoke(state["messages"])
         logger.debug(f"Agent node output: {result}")
+        if status_callback:
+            status_callback("Agent processed query.")
         return {"messages": [result], "status_messages": state["status_messages"] + ["Agent processed query."]}
     except Exception as e:
         logger.error(f"Agent node failed: {traceback.format_exc()}")
+        if status_callback:
+            status_callback("Error in agent decision.")
         return {
-            "messages": [AIMessage(content=f"Error in agent decision: {str(e)}")],
+            "messages": [AIMessage(content="抱歉，代理决策错误，请稍后重试。")],
             "status_messages": state["status_messages"] + ["Error in agent decision."]
         }
 
 def parse_select_columns(query: str) -> List[str]:
     """Parse column names or aliases from the SELECT clause of a SQL query."""
     try:
-        # Extract SELECT clause up to FROM
         match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
         if not match:
             logger.warning("Could not parse SELECT clause")
             return []
         select_clause = match.group(1)
-        # Split on commas, handling nested expressions
         columns = []
         current_col = ""
         paren_count = 0
@@ -207,15 +210,12 @@ def parse_select_columns(query: str) -> List[str]:
         if current_col.strip():
             columns.append(current_col.strip())
         
-        # Extract aliases or column names
         parsed_columns = []
         for col in columns:
-            # Check for AS alias
             alias_match = re.search(r'\bAS\s+([`"\']?)(.*?)\1\s*$', col, re.IGNORECASE)
             if alias_match:
                 parsed_columns.append(alias_match.group(2))
             else:
-                # Handle simple column names or expressions without alias
                 col_clean = re.sub(r'[`"\']', '', col.split()[-1])
                 parsed_columns.append(col_clean)
         logger.debug(f"Parsed columns: {parsed_columns}")
@@ -224,8 +224,8 @@ def parse_select_columns(query: str) -> List[str]:
         logger.error(f"Failed to parse SELECT columns: {traceback.format_exc()}")
         return []
 
-def tool_node(state: State, tools: List) -> Dict:
-    """Tool node: Executes tools and updates state with sql_result."""
+def tool_node(state: State, tools: List, status_callback: Callable[[str], None] = None) -> Dict:
+    """Tool node: Executes tools and updates state with sql_result, updates status via callback."""
     try:
         last_message = state["messages"][-1]
         tool_call = last_message.tool_calls[0]
@@ -235,24 +235,21 @@ def tool_node(state: State, tools: List) -> Dict:
         if not tool:
             raise ValueError(f"Tool {tool_name} not found")
         
-        state["status_messages"].append(f"Executing tool: {tool_name}")
+        if status_callback:
+            status_callback(f"Executing tool: {tool_name}")
         logger.debug(f"Executing tool: {tool_name} with input: {tool_input}")
         result = tool.invoke(tool_input)
         
-        # Update tool history
         tool_history_entry = {"tool": tool_name, "input": tool_input, "output": result}
         state["tool_history"] = state.get("tool_history", []) + [tool_history_entry]
         
-        # Store sql_result for sql_db_query
         sql_result = state.get("sql_result", [])
         if tool_name == "sql_db_query":
             try:
-                # Handle different result formats
                 if isinstance(result, list):
                     if all(isinstance(row, dict) for row in result):
                         sql_result = result
                     else:
-                        # Handle tuple-based results
                         columns = parse_select_columns(tool_input.get("query", ""))
                         if not columns:
                             columns = ["column_" + str(i) for i in range(len(result[0]))] if result else []
@@ -261,13 +258,12 @@ def tool_node(state: State, tools: List) -> Dict:
                             for row in result
                         ]
                 elif isinstance(result, str):
-                    # Handle string result
                     try:
                         parsed_result = ast.literal_eval(result)
                         if isinstance(parsed_result, list) and all(isinstance(row, tuple) for row in parsed_result):
                             columns = parse_select_columns(tool_input.get("query", ""))
                             if not columns:
-                                columns = ["model", "count", "percentage"]  # Fallback for this query
+                                columns = ["model", "count", "percentage"]
                             sql_result = [
                                 dict(zip(columns, (val if val is not None else "Unknown" for val in row)))
                                 for row in parsed_result
@@ -286,6 +282,8 @@ def tool_node(state: State, tools: List) -> Dict:
                 logger.error(f"Failed to parse SQL result: {traceback.format_exc()}")
                 sql_result = []
 
+        if status_callback:
+            status_callback(f"Tool {tool_name} executed successfully.")
         return {
             "messages": [ToolMessage(content=str(result), tool_call_id=tool_call["id"], name=tool_name)],
             "tool_history": state["tool_history"],
@@ -294,17 +292,19 @@ def tool_node(state: State, tools: List) -> Dict:
         }
     except Exception as e:
         logger.error(f"Tool node failed: {traceback.format_exc()}")
-        last_message = state["messages"][-1]
+        if status_callback:
+            status_callback("Error in tool execution.")
         return {
-            "messages": [ToolMessage(content=f"Tool error: {str(e)}", tool_call_id=last_message.tool_calls[0]["id"], name=last_message.tool_calls[0]["name"])],
+            "messages": [ToolMessage(content="Tool error.", tool_call_id=last_message.tool_calls[0]["id"], name=last_message.tool_calls[0]["name"])],
             "sql_result": state.get("sql_result", []),
             "status_messages": state["status_messages"] + ["Error in tool execution."]
         }
 
-def viz_node(state: State) -> Dict:
+def viz_node(state: State, status_callback: Callable[[str], None] = None) -> Dict:
     """Visualization node: Chooses viz type, formats data and tables with LLM, and builds chart config."""
     try:
-        state["status_messages"].append("Generating visualization and tables...")
+        if status_callback:
+            status_callback("Generating visualization and tables...")
         logger.debug(f"viz_node received sql_result: {state.get('sql_result', [])[:3]}")
         if not state.get("sql_result"):
             logger.warning("No SQL result for viz, skipping visualization and table formatting")
@@ -313,18 +313,12 @@ def viz_node(state: State) -> Dict:
             state["tables"] = []
             return state
         
-        # Extract conversation and tool history
         history = "\n".join([f"{msg.__class__.__name__}: {msg.content}" for msg in state["messages"] if isinstance(msg, (HumanMessage, AIMessage))])
         tool_history = "\n".join([f"Tool {h['tool']}: Input={h['input']}, Output={h['output']}" for h in state.get("tool_history", [])])
         
-        # Choose visualization type
         state["viz_type"] = choose_viz_type(state["question"], state["sql_result"], history, tool_history)
-        
-        # Format visualization data
         formatted_data = format_data_for_viz(state["viz_type"], state["sql_result"], state["question"], history, tool_history)
         state["viz_data"] = build_chart_config(state["viz_type"], formatted_data)
-        
-        # Format tables
         state["tables"] = format_tables(state["sql_result"], state["question"], history, tool_history)
         
         logger.info(f"Viz generated: type={state['viz_type']}, data={state['viz_data']}, tables={len(state['tables'])}")
@@ -345,15 +339,59 @@ def should_continue(state: State) -> str:
         return "tools"
     return "viz"
 
-def build_graph(db: SQLDatabase) -> tuple:
-    """Builds the LangGraph workflow with checkpointing."""
+def filter_context(state: State) -> State:
+    """Filter state to include only the latest relevant HumanMessage and AIMessage pair, plus all relevant tool history."""
+    try:
+        # Collect messages, keeping only the latest HumanMessage and AIMessage pair without tool_calls
+        filtered_messages = []
+        seen_human = False
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, HumanMessage) and not seen_human:
+                filtered_messages.append(msg)
+                seen_human = True
+            elif isinstance(msg, AIMessage) and not (hasattr(msg, "tool_calls") and msg.tool_calls) and seen_human:
+                filtered_messages.append(msg)
+                break  # Stop after finding the first valid AIMessage following a HumanMessage
+        filtered_messages.reverse()  # Restore original order
+
+        # Keep all relevant tool history entries
+        filtered_tool_history = [
+            h for h in state.get("tool_history", [])
+            if h["tool"] in ["sql_db_list_tables", "sql_db_schema", "sql_db_query", "sql_db_query_checker", "check_result"]
+        ]
+        logger.debug(f"Filtered messages: {len(filtered_messages)}, Filtered tool history: {len(filtered_tool_history)}")
+        return {
+            "messages": filtered_messages,
+            "question": state["question"],
+            "sql_result": [],
+            "viz_type": "none",
+            "viz_data": {},
+            "tables": [],
+            "tool_history": filtered_tool_history,
+            "status_messages": []
+        }
+    except Exception as e:
+        logger.error(f"Failed to filter context: {traceback.format_exc()}")
+        return {
+            "messages": state["messages"],
+            "question": state["question"],
+            "sql_result": [],
+            "viz_type": "none",
+            "viz_data": {},
+            "tables": [],
+            "tool_history": state.get("tool_history", []),
+            "status_messages": state.get("status_messages", []) + ["Error in context filtering."]
+        }
+
+def build_graph(db: SQLDatabase, status_callback: Callable[[str], None] = None) -> tuple:
+    """Builds the LangGraph workflow with checkpointing, accepting status_callback."""
     try:
         tools = initialize_tools(db)
         checkpointer = MemorySaver()
         workflow = StateGraph(State)
-        workflow.add_node("agent", lambda state: agent_node(state, tools))
-        workflow.add_node("tools", lambda state: tool_node(state, tools))
-        workflow.add_node("viz", viz_node)
+        workflow.add_node("agent", lambda state: agent_node(state, tools, status_callback))
+        workflow.add_node("tools", lambda state: tool_node(state, tools, status_callback))
+        workflow.add_node("viz", lambda state: viz_node(state, status_callback))
         workflow.set_entry_point("agent")
         workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "viz": "viz"})
         workflow.add_edge("tools", "agent")
@@ -365,29 +403,41 @@ def build_graph(db: SQLDatabase) -> tuple:
         logger.error(f"Failed to build graph: {traceback.format_exc()}")
         raise
 
-def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholder=None) -> Dict:
+def process_query(graph, inputs: dict, config: RunnableConfig, status_callback: Callable[[str], None] = None) -> Dict:
     """Processes a single query through the graph and generates Chart.js visualization."""
     try:
         start_time = time.time()
-        inputs["status_messages"] = []  # Initialize status messages
-        inputs["sql_result"] = []  # Ensure sql_result is initialized
+        inputs = filter_context(inputs)  # Filter context for follow-up questions
         response = graph.invoke(inputs, config)
         processing_time = time.time() - start_time
         logger.debug(f"Graph response: {response}")
         
-        # Update status with final processing time
-        if status_placeholder:
-            status_placeholder.markdown(f"Processing complete in {processing_time:.2f} seconds.")
+        # Deduplicate AIMessage entries, keeping only the latest non-tool-call AIMessage
+        unique_messages = []
+        seen_contents = set()
+        for msg in response["messages"]:
+            if isinstance(msg, AIMessage) and not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                if msg.content not in seen_contents:
+                    unique_messages.append(msg)
+                    seen_contents.add(msg.content)
+            else:
+                unique_messages.append(msg)
         
-        # Chart config is now viz_data
+        # Select final_message
+        final_message = None
+        for msg in reversed(unique_messages):
+            if isinstance(msg, AIMessage) and not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                final_message = msg
+                break
+        if not final_message:
+            logger.warning("No valid AIMessage found in response, using fallback")
+            final_message = AIMessage(content="抱歉，未能生成有效回答，请稍后重试或联系支持。")
+        
         chart_config = response.get("viz_data")
-
-        # Filter messages to include only final AIMessage
         filtered_messages = [
-            msg for msg in response["messages"]
-            if isinstance(msg, (HumanMessage, AIMessage)) and not (isinstance(msg, AIMessage) and msg.tool_calls)
+            msg for msg in unique_messages
+            if isinstance(msg, (HumanMessage, AIMessage)) and not (isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls)
         ]
-        final_message = next((msg for msg in reversed(response["messages"]) if isinstance(msg, AIMessage) and not msg.tool_calls), AIMessage(content="Error: No assistant response"))
         return {
             "answer": final_message.content,
             "viz_type": response.get("viz_type", "none"),
@@ -396,48 +446,55 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholde
             "tables": response.get("tables", []),
             "messages": filtered_messages,
             "processing_time": processing_time,
-            "status_messages": response.get("status_messages", [])
+            "status_messages": response.get("status_messages", []),
+            "tool_history": response.get("tool_history", [])
         }
     except Exception as e:
         logger.error(f"Query processing failed: {traceback.format_exc()}")
-        if status_placeholder:
-            status_placeholder.error(f"Error: {str(e)}")
         return {
-            "answer": f"Error occurred during processing: {str(e)}",
+            "answer": "抱歉，处理查询时发生错误，请稍后重试或联系支持。",
             "viz_type": "none",
             "viz_data": {},
             "chart_config": None,
             "tables": [],
-            "messages": inputs["messages"] + [AIMessage(content=f"Error: {str(e)}")],
+            "messages": inputs["messages"] + [AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")],
             "processing_time": time.time() - start_time,
-            "status_messages": inputs.get("status_messages", []) + ["Error in query processing."]
+            "status_messages": inputs.get("status_messages", []) + ["Error in query processing."],
+            "tool_history": inputs.get("tool_history", []),
+            "error": str(e)
         }
 
 if __name__ == "__main__":
     try:
         db = SQLDatabase.from_uri("sqlite:///real_database.db")
-        graph, _ = build_graph(db)
-        print("欢迎使用SQL Agent with Viz！输入您的查询问题（输入 'exit' 或 'quit' 退出）。")
+        graph, _ = build_graph(db)  # Initialize without status_callback for CLI
+        print("Welcome to SQL Agent with Viz! Enter your query (type 'exit' or 'quit' to exit).")
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
-        graph.invoke({"messages": [], "status_messages": [], "sql_result": []}, config)
+        graph.invoke({"messages": [], "status_messages": [], "sql_result": [], "tool_history": []}, config)
         while True:
-            question = input("您的查询: ")
+            question = input("Your query: ")
             if question.lower() in ["exit", "quit"]:
-                print("退出程序。")
+                print("Exiting program.")
                 break
             try:
-                inputs = {"messages": [HumanMessage(content=question)], "question": question, "status_messages": [], "sql_result": []}
-                result = process_query(graph, inputs, config)
-                print(f"答案: {result['answer']}")
+                inputs = {
+                    "messages": [HumanMessage(content=question)],
+                    "question": question,
+                    "status_messages": [],
+                    "sql_result": [],
+                    "tool_history": []
+                }
+                result = process_query(graph, inputs, config, lambda msg: print(f"Status: {msg}"))
+                print(f"Answer: {result['answer']}")
                 print(f"Processing time: {result['processing_time']:.2f} seconds")
                 print(f"Viz Type: {result['viz_type']}, Data: {result['viz_data']}")
                 for table in result['tables']:
                     print(f"\n{table['title']}:")
                     print(pd.DataFrame(table['data']).to_string(index=False))
             except Exception as e:
-                print(f"错误: {e}")
+                print("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
                 logger.error(f"Query error: {traceback.format_exc()}")
     except Exception as e:
-        print(f"初始化错误: {e}")
+        print("抱歉，初始化时发生错误，请稍后重试或联系支持。")
         logger.error(f"Initialization error: {traceback.format_exc()}")
