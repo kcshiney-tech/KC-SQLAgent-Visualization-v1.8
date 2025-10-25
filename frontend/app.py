@@ -143,12 +143,14 @@ def render_dashboard():
                             <html>
                             <head>
                                 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                                <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
                             </head>
                             <body>
                                 <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
                                 <script>
                                     document.addEventListener('DOMContentLoaded', function() {{
                                         try {{
+                                            Chart.register(ChartDataLabels); 
                                             var ctx = document.getElementById('{chart_id}').getContext('2d');
                                             var myChart = new Chart(ctx, {chart_json});
                                         }} catch (e) {{
@@ -159,6 +161,26 @@ def render_dashboard():
                             </body>
                             </html>
                             """
+                            # html = f"""
+                            # <html>
+                            # <head>
+                            #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                            # </head>
+                            # <body>
+                            #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                            #     <script>
+                            #         document.addEventListener('DOMContentLoaded', function() {{
+                            #             try {{
+                            #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
+                            #                 var myChart = new Chart(ctx, {chart_json});
+                            #             }} catch (e) {{
+                            #                 console.error('Chart.js error: ' + e.message);
+                            #             }}
+                            #         }});
+                            #     </script>
+                            # </body>
+                            # </html>
+                            # """
                             try:
                                 components.html(html, height=450, scrolling=False)
                             except Exception as e:
@@ -213,12 +235,14 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
             <html>
             <head>
                 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
             </head>
             <body>
                 <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
                 <script>
                     document.addEventListener('DOMContentLoaded', function() {{
                         try {{
+                            Chart.register(ChartDataLabels);  
                             var ctx = document.getElementById('{chart_id}').getContext('2d');
                             var myChart = new Chart(ctx, {chart_json});
                         }} catch (e) {{
@@ -229,6 +253,26 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
             </body>
             </html>
             """
+            # html = f"""
+            # <html>
+            # <head>
+            #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+            # </head>
+            # <body>
+            #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+            #     <script>
+            #         document.addEventListener('DOMContentLoaded', function() {{
+            #             try {{
+            #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
+            #                 var myChart = new Chart(ctx, {chart_json});
+            #             }} catch (e) {{
+            #                 console.error('Chart.js error: ' + e.message);
+            #             }}
+            #         }});
+            #     </script>
+            # </body>
+            # </html>
+            # """
             try:
                 components.html(html, height=450, scrolling=False)
             except Exception as e:
@@ -337,12 +381,14 @@ with tab1:
                         <html>
                         <head>
                             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                            <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
                         </head>
                         <body>
                             <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
                             <script>
                                 document.addEventListener('DOMContentLoaded', function() {{
                                     try {{
+                                        Chart.register(ChartDataLabels);  
                                         var ctx = document.getElementById('{chart_id}').getContext('2d');
                                         var myChart = new Chart(ctx, {chart_json});
                                     }} catch (e) {{
@@ -353,6 +399,26 @@ with tab1:
                         </body>
                         </html>
                         """
+                        # html = f"""
+                        # <html>
+                        # <head>
+                        #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                        # </head>
+                        # <body>
+                        #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                        #     <script>
+                        #         document.addEventListener('DOMContentLoaded', function() {{
+                        #             try {{
+                        #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
+                        #                 var myChart = new Chart(ctx, {chart_json});
+                        #             }} catch (e) {{
+                        #                 console.error('Chart.js error: ' + e.message);
+                        #             }}
+                        #         }});
+                        #     </script>
+                        # </body>
+                        # </html>
+                        # """
                         try:
                             components.html(html, height=450, scrolling=False)
                         except Exception as e:
