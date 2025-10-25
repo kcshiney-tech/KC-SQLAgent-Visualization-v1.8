@@ -194,19 +194,35 @@ Examples:
 }
 
 def _extract_json_substring(s: str) -> str:
-    """Extract the first JSON object or array substring from text, handling code blocks."""
+    """Extract the complete JSON object or array from text, handling code blocks."""
     if not s or not isinstance(s, str):
         logger.debug("Empty or invalid input string for JSON extraction")
         return ""
     s_clean = re.sub(r"```(?:json)?\s*", "", s, flags=re.IGNORECASE)
     s_clean = re.sub(r"\s*```", "", s_clean, flags=re.IGNORECASE).strip()
-    m_obj = re.search(r'(\{.*?\})', s_clean, flags=re.DOTALL)
-    m_arr = re.search(r'(\[.*?\])', s_clean, flags=re.DOTALL)
-    if m_obj:
-        return m_obj.group(1)
-    if m_arr:
-        return m_arr.group(1)
-    return s_clean if s_clean else ""
+    
+    # Find the first complete JSON object or array
+    stack = []
+    start_idx = -1
+    for i, char in enumerate(s_clean):
+        if char in '{[':
+            if stack and stack[-1] in '{[':
+                stack.append(char)
+            else:
+                stack = [char]
+                start_idx = i
+        elif char in '}]':
+            if stack:
+                if (char == '}' and stack[-1] == '{') or (char == ']' and stack[-1] == '['):
+                    stack.pop()
+                    if not stack:
+                        return s_clean[start_idx:i+1]
+                else:
+                    stack.append(char)
+            else:
+                continue
+    logger.warning(f"No complete JSON found in: {s_clean[:100]}...")
+    return ""
 
 def parse_llm_response(content: str) -> Dict:
     """Parse LLM response to extract and validate JSON."""
@@ -242,17 +258,18 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             """You are a data visualization expert. Based on:
             - User question: '{question}'
             - Conversation history: '{history}'
-            - Tool history (SQL queries and results): '{tool_tool_history}'
+            - Tool history (SQL queries and results): '{tool_history}'
             - SQL query result (first 3 rows): {sample_result}
             Detect user intent for visualization:
-            - Explicit intent: Keywords like 'chart', 'graph', 'visualize', 'plot', 'show me a', or explicit visual requests.
-            - Implicit intent: Queries involving trends ('trend', 'over time'), distributions ('distribution', 'proportion'), comparisons ('compare', 'vs', 'ranking'), or aggregations ('group by', 'top N').
+            - Explicit intent: Keywords like 'chart', 'graph', 'visualize', 'plot', 'show me a', or '饼图' (pie chart).
+            - Implicit intent: Queries involving trends ('trend', 'over time'), distributions ('distribution', 'proportion', '占比'), comparisons ('compare', 'vs', 'ranking'), or aggregations ('group by', 'top N').
+            - Prioritize 'pie' if the user explicitly requests a pie chart (e.g., '画饼图').
             - Default to 'none' if no visual intent or unsuitable data.
             Select the most appropriate type from: {viz_types}.
             - 'bar': Comparisons across categories (>2 categories), e.g., "Sales by product".
             - 'horizontal_bar': Comparisons with few categories or large disparities, e.g., "Revenue of A vs B".
             - 'line': Trends over time, e.g., "Website visits over the year".
-            - 'pie': Proportions, e.g., "Market share distribution".
+            - 'pie': Proportions, e.g., "Market share distribution" or explicit pie chart requests.
             - 'scatter': Correlations between two numeric variables, e.g., "Height vs weight".
             - 'none': Single values, empty results, or no visual intent.
             Ensure data structure compatibility (e.g., categorical + numeric for bar/pie, two numerics for scatter).
@@ -292,25 +309,36 @@ def format_data_for_viz(viz_type: str, sql_result: List[Dict], question: str, hi
             - SQL results: {results}
             Follow this structure and examples: {instructions}
             Provide meaningful 'title', 'xLabel', 'yLabel' (if applicable) based on the question and data.
+            For pie charts, use the column representing percentages (e.g., '占比') for values and the categorical column (e.g., '型号') for labels.
             Ensure numerical values are floats, handle groupings logically, and replace NULL/empty values with 'Unknown'.
             Output ONLY the JSON object."""
         )
         chain = prompt | llm
-        response = chain.invoke({
-            "question": question,
-            "history": history,
-            "tool_history": tool_history,
-            "results": json.dumps(sql_result),
-            "instructions": instructions
-        })
-        content = response.content if hasattr(response, "content") else str(response)
-        logger.debug(f"LLM formatting response: {content}")
-        formatted_data = parse_llm_response(content)
-        if not formatted_data:
-            logger.error("Failed to parse formatted data from LLM response")
-            raise ValueError("Invalid formatted data")
-        logger.info(f"Formatted viz data: {formatted_data}")
-        return formatted_data
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                response = chain.invoke({
+                    "question": question,
+                    "history": history,
+                    "tool_history": tool_history,
+                    "results": json.dumps(sql_result),
+                    "instructions": instructions
+                })
+                content = response.content if hasattr(response, "content") else str(response)
+                logger.debug(f"LLM formatting response (attempt {attempt + 1}): {content}")
+                formatted_data = parse_llm_response(content)
+                if not formatted_data:
+                    logger.warning(f"Failed to parse formatted data on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        continue
+                    raise ValueError("Invalid formatted data after retries")
+                logger.info(f"Formatted viz data: {formatted_data}")
+                return formatted_data
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise ValueError("Invalid formatted data after retries")
+        return {}
     except Exception as e:
         logger.error(f"Data formatting failed: {traceback.format_exc()}")
         return {}
@@ -328,31 +356,41 @@ def format_tables(sql_result: List[Dict], question: str, history: str = "", tool
             - Tool history: '{tool_history}'
             - SQL results: {results}
             Format the data into a list of tables, each with a title and data:
-            {
-                "title": string,
-                "data": { "column_name": value }[]
-            }
+            {{
+                "title": "string",
+                "data": {{ "column_name": "value" }}[]
+            }}
             - Provide a meaningful table title based on the question.
-            - Use column names that are human-readable, derived from the question and data.
+            - Use human-readable column names, derived from the question and data (e.g., '型号', '故障次数', '占比').
             - Replace NULL/empty values with 'Unknown'.
             - If grouping is logical (e.g., by category), create multiple tables.
-            Output ONLY the JSON object: [{"title": string, "data": { "column_name": value }[]}]"""
+            Output ONLY the JSON object: [{{"title": "string", "data": {{ "column_name": "value" }}[]}}]"""
         )
         chain = prompt | llm
-        response = chain.invoke({
-            "question": question,
-            "history": history,
-            "tool_history": tool_history,
-            "results": json.dumps(sql_result)
-        })
-        content = response.content if hasattr(response, "content") else str(response)
-        logger.debug(f"LLM table formatting response: {content}")
-        tables = parse_llm_response(content)
-        if not isinstance(tables, list):
-            logger.error("Table formatting did not return a list")
-            return []
-        logger.info(f"Formatted tables: {tables}")
-        return tables
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                response = chain.invoke({
+                    "question": question,
+                    "history": history,
+                    "tool_history": tool_history,
+                    "results": json.dumps(sql_result)
+                })
+                content = response.content if hasattr(response, "content") else str(response)
+                logger.debug(f"LLM table formatting response (attempt {attempt + 1}): {content}")
+                tables = parse_llm_response(content)
+                if not isinstance(tables, list):
+                    logger.warning(f"Table formatting did not return a list on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        continue
+                    return []
+                logger.info(f"Formatted tables: {tables}")
+                return tables
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    return []
+        return []
     except Exception as e:
         logger.error(f"Table formatting failed: {traceback.format_exc()}")
         return []
@@ -418,7 +456,7 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
         elif viz_type == "pie":
             data_list = formatted_data.get("data", [])
             labels = [d["label"] if d["label"] is not None else "Unknown" for d in data_list]
-            values = [float(d["value"]) if d["value"] is not None else 0.0 for d in data_list]
+            values = [round(float(d["value"]), 2) if d["value"] is not None else 0.0 for d in data_list]
             config["data"] = {
                 "labels": labels,
                 "datasets": [{"data": values, "backgroundColor": colors[:len(values)]}]

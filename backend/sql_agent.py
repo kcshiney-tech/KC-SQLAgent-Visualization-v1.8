@@ -181,6 +181,49 @@ def agent_node(state: State, tools: List) -> Dict:
             "status_messages": state["status_messages"] + ["Error in agent decision."]
         }
 
+def parse_select_columns(query: str) -> List[str]:
+    """Parse column names or aliases from the SELECT clause of a SQL query."""
+    try:
+        # Extract SELECT clause up to FROM
+        match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
+        if not match:
+            logger.warning("Could not parse SELECT clause")
+            return []
+        select_clause = match.group(1)
+        # Split on commas, handling nested expressions
+        columns = []
+        current_col = ""
+        paren_count = 0
+        for char in select_clause:
+            if char == '(':
+                paren_count += 1
+            elif char == ')':
+                paren_count -= 1
+            elif char == ',' and paren_count == 0:
+                columns.append(current_col.strip())
+                current_col = ""
+                continue
+            current_col += char
+        if current_col.strip():
+            columns.append(current_col.strip())
+        
+        # Extract aliases or column names
+        parsed_columns = []
+        for col in columns:
+            # Check for AS alias
+            alias_match = re.search(r'\bAS\s+([`"\']?)(.*?)\1\s*$', col, re.IGNORECASE)
+            if alias_match:
+                parsed_columns.append(alias_match.group(2))
+            else:
+                # Handle simple column names or expressions without alias
+                col_clean = re.sub(r'[`"\']', '', col.split()[-1])
+                parsed_columns.append(col_clean)
+        logger.debug(f"Parsed columns: {parsed_columns}")
+        return parsed_columns
+    except Exception as e:
+        logger.error(f"Failed to parse SELECT columns: {traceback.format_exc()}")
+        return []
+
 def tool_node(state: State, tools: List) -> Dict:
     """Tool node: Executes tools and updates state with sql_result."""
     try:
@@ -210,22 +253,25 @@ def tool_node(state: State, tools: List) -> Dict:
                         sql_result = result
                     else:
                         # Handle tuple-based results
-                        keys = ["column_" + str(i) for i in range(len(result[0]))] if result else []
-                        sql_result = [dict(zip(keys, row)) for row in result]
+                        columns = parse_select_columns(tool_input.get("query", ""))
+                        if not columns:
+                            columns = ["column_" + str(i) for i in range(len(result[0]))] if result else []
+                        sql_result = [
+                            dict(zip(columns, (val if val is not None else "Unknown" for val in row)))
+                            for row in result
+                        ]
                 elif isinstance(result, str):
-                    # Handle string result (e.g., "[('400G_AOC_QSFP112', 40.0), ...]")
+                    # Handle string result
                     try:
                         parsed_result = ast.literal_eval(result)
                         if isinstance(parsed_result, list) and all(isinstance(row, tuple) for row in parsed_result):
-                            # Use column names from the query if possible
-                            query = tool_input.get("query", "")
-                            match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
-                            if match:
-                                select_clause = match.group(1)
-                                columns = [col.strip().split(" AS ")[-1].strip('"') for col in select_clause.split(",")]
-                            else:
-                                columns = ["model", "percentage"]  # Fallback for this specific query
-                            sql_result = [dict(zip(columns, row)) for row in parsed_result]
+                            columns = parse_select_columns(tool_input.get("query", ""))
+                            if not columns:
+                                columns = ["model", "count", "percentage"]  # Fallback for this query
+                            sql_result = [
+                                dict(zip(columns, (val if val is not None else "Unknown" for val in row)))
+                                for row in parsed_result
+                            ]
                         else:
                             logger.warning(f"Parsed result is not a list of tuples: {type(parsed_result)}")
                             sql_result = []
