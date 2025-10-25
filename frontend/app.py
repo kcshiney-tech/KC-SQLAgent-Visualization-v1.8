@@ -1,10 +1,10 @@
-# frontend/app.py
+# app.py
 """
 Streamlit frontend for the SQL Agent with data visualization.
 Provides a ChatGPT-like interface with session management and tabular output.
 """
 import streamlit as st
-import streamlit.components.v1 as components  # Explicitly import components
+import streamlit.components.v1 as components
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -98,7 +98,7 @@ def rebuild_db(uploaded_files, sheet_configs=None):
         st.error(f"Database rebuild error: {e}")
         logger.error(f"Rebuild failed: {traceback.format_exc()}")
 
-# Define routine dashboard queries (customize based on your DB schema)
+# Define routine dashboard queries
 dashboard_modules = {
     "质量模块": [
         # {"query": "近一个月的光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近一个月光模块故障"},
@@ -121,7 +121,8 @@ def render_dashboard():
                         "messages": [HumanMessage(content=q["query"])],
                         "question": q["query"],
                         "tool_history": [],
-                        "status_messages": []
+                        "status_messages": [],
+                        "sql_result": []
                     }
                     config = {"configurable": {"thread_id": "dashboard"}}
                     result = process_query(graph, inputs, config)
@@ -131,7 +132,6 @@ def render_dashboard():
                             st.write(f"**{table['title']}**")
                             st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                     if result["chart_config"]:
-                        # Render Chart.js with unique canvas ID
                         chart_id = f"chart_{uuid.uuid4().hex}"
                         chart_json = json.dumps(result["chart_config"])
                         html = f"""
@@ -167,7 +167,6 @@ st.title("灵图SQL视图")
 tab1, tab2 = st.tabs(["Chat", "Dashboard"])
 
 with tab1:
-    # Sidebar for session management (chat-specific)
     with st.sidebar:
         st.header("Chat History")
         if "chat_history" not in st.session_state:
@@ -176,71 +175,9 @@ with tab1:
             st.session_state.current_thread_id = str(uuid.uuid4())
             st.session_state.chat_history[st.session_state.current_thread_id] = []
             st.session_state.first_questions[st.session_state.current_thread_id] = "New Chat"
-            logger.info(f"Initialized first conversation thread: {st.session_state.current_thread_id}")
+            logger.info(f"Initialized new chat session: {st.session_state.current_thread_id}")
 
-        # New chat button
-        if st.button("New Chat"):
-            new_thread_id = str(uuid.uuid4())
-            st.session_state.chat_history[new_thread_id] = []
-            st.session_state.first_questions[new_thread_id] = "New Chat"
-            st.session_state.current_thread_id = new_thread_id
-            logger.info(f"Started new conversation thread: {new_thread_id}")
-            st.rerun()
-
-        # Select existing chats
-        chat_options = {
-            thread_id: st.session_state.first_questions.get(thread_id, "New Chat")[:50] + "..." 
-            if len(st.session_state.first_questions.get(thread_id, "")) > 50 
-            else st.session_state.first_questions.get(thread_id, "New Chat")
-            for thread_id in st.session_state.chat_history.keys()
-        }
-        selected_chat = st.selectbox(
-            "Select Chat",
-            options=list(chat_options.keys()),
-            format_func=lambda x: chat_options[x],
-            index=list(chat_options.keys()).index(st.session_state.current_thread_id),
-            key="chat_select"
-        )
-        if selected_chat != st.session_state.current_thread_id:
-            st.session_state.current_thread_id = selected_chat
-            st.session_state.needs_rerun = True
-
-        st.header("Database Rebuild")
-        uploaded_files = st.file_uploader(
-            "Upload Excel/CSV to rebuild DB",
-            type=["xlsx", "csv"],
-            accept_multiple_files=True
-        )
-        sheet_configs = {}
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                if uploaded_file.name.endswith(".xlsx"):
-                    with st.expander(f"Configure sheets for {uploaded_file.name}"):
-                        available_sheets = load_excel_sheets(uploaded_file.getvalue(), uploaded_file.name)
-                        selected_sheets = st.multiselect(
-                            f"Select sheets for {uploaded_file.name}",
-                            available_sheets,
-                            default=available_sheets,
-                            key=f"multiselect_{uploaded_file.name}_{st.session_state.current_thread_id}"
-                        )
-                        sheet_names = []
-                        for sheet in selected_sheets:
-                            table_name = st.text_input(
-                                f"Table name for sheet {sheet}",
-                                key=f"{uploaded_file.name}_{sheet}_{st.session_state.current_thread_id}"
-                            )
-                            sheet_names.append((sheet, table_name or None))
-                        sheet_configs[uploaded_file.name] = sheet_names
-
-        if st.button("Rebuild DB"):
-            with st.spinner("Rebuilding database..."):
-                rebuild_db(uploaded_files, sheet_configs)
-                st.session_state.chat_history = {st.session_state.current_thread_id: []}
-                st.session_state.first_questions = {st.session_state.current_thread_id: "New Chat"}
-                logger.info("Chat history reset after database rebuild")
-                st.session_state.needs_rerun = True
-
-    # Handle rerun only when necessary
+    # Handle rerun
     if st.session_state.get("needs_rerun", False):
         st.session_state.needs_rerun = False
         st.rerun()
@@ -249,8 +186,6 @@ with tab1:
     chat_container = st.container()
     with chat_container:
         st.header("灵图SQL对话")
-        
-        # Display chat history
         for message in st.session_state.chat_history[st.session_state.current_thread_id]:
             if isinstance(message, (HumanMessage, AIMessage)):
                 role = "user" if isinstance(message, HumanMessage) else "assistant"
@@ -261,7 +196,6 @@ with tab1:
                             st.write(f"**{table['title']}**")
                             st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                     if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                        # Render Chart.js with unique canvas ID
                         chart_id = f"chart_{uuid.uuid4().hex}"
                         chart_json = json.dumps(message.chart_config)
                         html = f"""
@@ -293,16 +227,13 @@ with tab1:
     # Chat input and processing
     prompt = st.chat_input("Enter your query (e.g., 'Which country's customers spent the most?')")
     if prompt:
-        # Update first question for new sessions
         if not st.session_state.chat_history[st.session_state.current_thread_id]:
             st.session_state.first_questions[st.session_state.current_thread_id] = prompt[:50] + "..." if len(prompt) > 50 else prompt
-        
         user_message = HumanMessage(content=prompt)
         st.session_state.chat_history[st.session_state.current_thread_id].append(user_message)
         with chat_container:
             with st.chat_message("user"):
                 st.markdown(prompt)
-            
             with st.chat_message("assistant"):
                 status_placeholder = st.empty()
                 status_placeholder.markdown("Starting query processing...")
@@ -312,22 +243,20 @@ with tab1:
                             "messages": st.session_state.chat_history[st.session_state.current_thread_id],
                             "question": prompt,
                             "tool_history": [],
-                            "status_messages": []
+                            "status_messages": [],
+                            "sql_result": []
                         }
                         config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
                         result = process_query(graph, inputs, config, status_placeholder)
-                        # Update status messages in real-time
                         for status in result["status_messages"]:
                             status_placeholder.markdown(status)
-                            time.sleep(0.5)  # Brief delay for visibility
-                        # Display final response
+                            time.sleep(0.5)
                         st.markdown(result['answer'])
                         if result["tables"]:
                             for table in result["tables"]:
                                 st.write(f"**{table['title']}**")
                                 st.dataframe(pd.DataFrame(table["data"]), width='stretch')
                         if result["chart_config"]:
-                            # Render Chart.js with unique canvas ID
                             chart_id = f"chart_{uuid.uuid4().hex}"
                             chart_json = json.dumps(result["chart_config"])
                             html = f"""
@@ -356,7 +285,6 @@ with tab1:
                                 st.error(f"Failed to render chart: {str(e)}. Please ensure Streamlit is version 0.87.0 or higher.")
                                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
                         st.markdown(f"**Processing Time**: {result['processing_time']:.2f} seconds")
-                        # Update chat history with final message only
                         assistant_message = AIMessage(content=result['answer'])
                         if result["tables"]:
                             assistant_message.tables = result["tables"]

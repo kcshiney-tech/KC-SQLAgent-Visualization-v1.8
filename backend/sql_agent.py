@@ -1,4 +1,4 @@
-# backend/sql_agent.py
+# sql_agent.py
 """
 SQL Agent with visualization capabilities using LangGraph.
 Handles SQL queries, maintains conversation context, and generates tabular and visual outputs.
@@ -6,10 +6,9 @@ Handles SQL queries, maintains conversation context, and generates tabular and v
 from datetime import datetime
 import os
 import sys
-import ast
 import json
-from datetime import datetime, date
 import time
+import ast
 import re
 from typing import Annotated, List, Dict
 from typing_extensions import TypedDict
@@ -28,7 +27,7 @@ import logging
 import uuid
 import traceback
 from pydantic import BaseModel, Field
-from backend.utils.viz_utils import choose_viz_type, format_data_for_viz
+from backend.utils.viz_utils import choose_viz_type, format_data_for_viz, format_tables, build_chart_config
 import pandas as pd
 
 # Configure logging
@@ -56,15 +55,15 @@ QWEN_MODEL = os.getenv("QWEN_MODEL", "Qwen3-Coder-480B")
 TEMPERATURE = float(os.getenv("QWEN_TEMPERATURE", 0.2))
 
 class State(TypedDict):
-    """State definition for the LangGraph workflow."""
+    """State definition for the LangGraph workflow, aligned with State.py."""
     messages: Annotated[list[AnyMessage], add_messages]
     question: str
     sql_result: List[Dict]
     viz_type: str
     viz_data: Dict
     tables: List[Dict]
-    tool_history: List[Dict]  # Store tool call inputs/outputs
-    status_messages: List[str]  # Store node processing status
+    tool_history: List[Dict]
+    status_messages: List[str]
 
 class CheckResultInput(BaseModel):
     query_result: str = Field(description="The result of the executed SQL query")
@@ -142,403 +141,127 @@ For each new user question:
 5. Call sql_db_query to execute the query.
 6. Call check_result to verify the result.
 7. If the query fails or results are empty, rewrite and retry (max 2 retries).
-8. Structure the final response as a natural language summary followed by a tabular representation.
-   - Suggest logical sub-table groupings (e.g., by model or vendor) if the result set is large (>5 rows).
-   - Format failure rates or percentages (columns with 'rate' or 'failure' in the name) as percentages (e.g., 0.123 -> 12.3%).
+8. Structure the final response as a natural language summary.
 9. NEVER return a SQL query as text; ALWAYS use sql_db_query to execute it.
 10. DO NOT use DML statements (INSERT, UPDATE, DELETE, DROP).
 Example:
 Question: Which country's customers spent the most?
-Answer: The country whose customers spent the most is [Country], with a total of [TotalSpent].
-Suggested Grouping: By Country
-Table:
-| Country | TotalSpent |
-|---------|------------|
-| [Country] | [TotalSpent] |
-"""
+Thought: I should look at the tables in the database to see what I can query. Then I should query the schema of the relevant tables.
+Action: sql_db_list_tables
+Observation: Albums, Artists, Customers, Employees, Genres, InvoiceLines, Invoices, MediaTypes, Playlists, PlaylistTrack, Tracks
+Thought: To find out which country's customers spent the most, I'll need to query data from the Customers and Invoices tables.
+Action: sql_db_schema
+Args: Customers, Invoices
+Observation: schema details...
+Thought: Now I can construct my query.
+Action: sql_db_query_checker
+Args: SELECT c.Country, SUM(i.Total) AS TotalSpent FROM Customers c JOIN Invoices i ON c.CustomerId = i.CustomerId GROUP BY c.Country ORDER BY TotalSpent DESC LIMIT 5
+Observation: The query looks good.
+Action: sql_db_query
+Args: SELECT c.Country, SUM(i.Total) AS TotalSpent FROM Customers c JOIN Invoices i ON c.CustomerId = i.CustomerId GROUP BY c.Country ORDER BY TotalSpent DESC LIMIT 5
+Observation: [('USA', 523.06), ('Canada', 303.96), ('France', 195.10), ('Brazil', 190.10), ('Germany', 156.48)]
+Final Answer: The country whose customers spent the most is the USA, with a total of $523.06."""
 
-def clean_column_name(col: str) -> str:
-    """Clean SQL column names by removing aggregation functions, aliases, and quotes."""
-    # Remove outer quotes if present
-    col = col.strip().strip('"').strip("'").strip('"')
-    
-    # Remove SUM(), ROUND(), COUNT(), etc., and extract alias if present
-    col = re.sub(r'^(SUM|ROUND|COUNT|AVG|MIN|MAX)\((.*?)\)(\s*AS\s*(.*?))?$', r'\4', col, flags=re.IGNORECASE).strip()
-    col = re.sub(r'^(.*?)\s+AS\s+(.*?)$', r'\2', col, flags=re.IGNORECASE).strip()
-    
-    # Remove any remaining quotes
-    col = col.strip().strip('"').strip("'").strip('"')
-    
-    return col if col else "Unknown"
-    
-
-def format_tables(sql_result: List[Dict], question: str, agent_suggestion: str = "") -> List[Dict]:
-    """Format SQL results into sub-tables based on logical groupings or agent suggestion."""
+def agent_node(state: State, tools: List) -> Dict:
+    """Agent node: Decides on tool calls or final response."""
     try:
-        if not sql_result:
-            return []
-        
-        # Clean column names
-        cleaned_result = []
-        for row in sql_result:
-            cleaned_row = {clean_column_name(k): v for k, v in row.items()}
-            cleaned_result.append(cleaned_row)
-        
-        df = pd.DataFrame(cleaned_result)
-        tables = []
-        
-        # Identify columns for grouping
-        categorical_cols = [col for col in df.columns if df[col].dtype == "object" and col.lower() not in ["rate", "failure"]]
-        numeric_cols = [col for col in df.columns if df[col].dtype in ["int64", "float64"]]
-        
-        # Format numeric columns with 'rate' or 'failure' as percentages
-        for col in numeric_cols:
-            if "rate" in col.lower() or "failure" in col.lower():
-                df[col] = df[col].apply(lambda x: f"{x*100:.1f}%" if isinstance(x, (int, float)) and pd.notnull(x) else x)
-        
-        # Use agent-suggested grouping if provided
-        group_col = None
-        if agent_suggestion and any(col.lower() in agent_suggestion.lower() for col in categorical_cols):
-            group_col = next(col for col in categorical_cols if col.lower() in agent_suggestion.lower())
-        elif categorical_cols and len(sql_result) > 5:
-            group_col = categorical_cols[0]
-        
-        if group_col:
-            for name, group in df.groupby(group_col):
-                tables.append({
-                    "title": f"Results for {group_col}: {name}",
-                    "data": group.to_dict(orient="records")
-                })
-        else:
-            tables.append({
-                "title": "Query Results",
-                "data": df.to_dict(orient="records")
-            })
-        
-        return tables
-    except Exception as e:
-        logger.error(f"Table formatting failed: {traceback.format_exc()}")
-        return [{"title": "Query Results", "data": cleaned_result}]
-
-
-def agent_node(state: State, tools) -> Dict:
-    """Agent node: Invokes the LLM with tools bound."""
-    try:
-        current_date = date.today()  # 获取当前日期（不含时间） datetime.date(2025, 10, 22)
-        current_datetime = datetime.now()  # 获取当前日期时间 datetime.datetime(2025, 10, 22, 18, 55, 14, 139447)
-        formatted_system_prompt = system_prompt.format(current_date=current_date)
-        state["status_messages"].append("Analyzing question and generating SQL query...")
+        current_date = datetime.now().strftime("%Y-%m-%d")
         prompt = ChatPromptTemplate.from_messages([
-            ("system", formatted_system_prompt),
-            MessagesPlaceholder("messages"),
+            ("system", system_prompt.format(current_date=current_date)),
+            MessagesPlaceholder(variable_name="messages")
         ])
-        llm_with_tools = llm.bind_tools(tools)
-        chain = prompt | llm_with_tools
-        time.sleep(1)
-        response = chain.invoke({"messages": state["messages"]})
-        logger.debug(f"Agent response: {response}")
-        # Extract grouping suggestion from response if present
-        grouping_suggestion = ""
-        if "Suggested Grouping" in response.content:
-            grouping_suggestion = response.content.split("Suggested Grouping: ")[-1].split("\n")[0]
-        return {"messages": [response], "grouping_suggestion": grouping_suggestion}
+        agent = prompt | llm.bind_tools(tools)
+        result = agent.invoke(state["messages"])
+        logger.debug(f"Agent node output: {result}")
+        return {"messages": [result], "status_messages": state["status_messages"] + ["Agent processed query."]}
     except Exception as e:
         logger.error(f"Agent node failed: {traceback.format_exc()}")
-        return {"messages": [AIMessage(content="Agent error occurred.")], "sql_result": [], "viz_type": "none", "viz_data": {}, "tables": [], "status_messages": state["status_messages"] + ["Error in agent processing."]}
-
-def tool_node(state: State, tools) -> Dict:
-    """Tool node: Executes the called tool and handles SQL query results."""
-
-    import re
-    from typing import List
-
-    def _strip_quotes(name: str) -> str:
-        if not isinstance(name, str):
-            return name
-        name = name.strip()
-        if (name.startswith('"') and name.endswith('"')) or (name.startswith("'") and name.endswith("'")):
-            return name[1:-1]
-        if name.startswith("`") and name.endswith("`"):
-            return name[1:-1]
-        return name
-
-    def _split_top_level_commas(s: str) -> List[str]:
-        """
-        按顶层逗号分割（不会切割在括号内的逗号）。
-        更稳健：逐字符扫描并追踪括号 depth。
-        """
-        if s is None:
-            return []
-        parts = []
-        cur = []
-        depth = 0
-        in_single = False
-        in_double = False
-        for ch in s:
-            # handle quote toggles (skip splitting inside quotes)
-            if ch == "'" and not in_double:
-                in_single = not in_single
-                cur.append(ch)
-                continue
-            if ch == '"' and not in_single:
-                in_double = not in_double
-                cur.append(ch)
-                continue
-            if in_single or in_double:
-                cur.append(ch)
-                continue
-            if ch == '(':
-                depth += 1
-                cur.append(ch)
-                continue
-            if ch == ')':
-                if depth > 0:
-                    depth -= 1
-                cur.append(ch)
-                continue
-            if ch == ',' and depth == 0:
-                parts.append(''.join(cur).strip())
-                cur = []
-                continue
-            cur.append(ch)
-        if cur:
-            parts.append(''.join(cur).strip())
-        return parts
-
-    def _extract_alias_from_item(item: str) -> str:
-        """
-        多策略提取 alias：
-        1) 尝试 r'\\bAS\s+...'（支持 ` " ' 或无引号）
-        2) 尝试行末直接的 alias（如 `... ) 占比` 或 `... ) AS 占比` 被换行分隔的情形）
-        3) 移除括号内容后取最后 token（若该 token 看起来像中文或字母数字）
-        4) 若没有则返回 None
-        """
-        if not item or not isinstance(item, str):
-            return None
-        # normalize whitespace
-        s = item.strip()
-        # 1) AS alias
-        m = re.search(r'\bAS\s+(`[^`]+`|"[^"]+"|\'[^\']+\'|[^\s,()]+)', s, flags=re.IGNORECASE | re.UNICODE)
-        if m:
-            return _strip_quotes(m.group(1).strip())
-        # 2) 如果 AS 未命中，尝试在末尾查找实际 alias（包括换行情况）
-        #    查找末尾连续的中文/英文/数字/下划线/短横
-        m2 = re.search(r'([A-Za-z0-9_\-\u4e00-\u9fff]+)\s*$', s)
-        if m2:
-            candidate = m2.group(1)
-            # 如果候选是 SQL 关键字或函数名则拒绝
-            if candidate.upper() not in ("COUNT", "SUM", "MAX", "MIN", "ROUND", "AVG", "DISTINCT", "CASE", "WHEN", "THEN"):
-                return _strip_quotes(candidate)
-        # 3) 去掉括号内容再取最后 token
-        no_paren = re.sub(r'\([^()]*\)', '', s)
-        tokens = re.split(r'\s+', no_paren.strip())
-        if tokens:
-            candidate = tokens[-1]
-            candidate = re.sub(r'[^0-9A-Za-z\u4e00-\u9fff_\-]', '', candidate)
-            if candidate:
-                if candidate.upper() not in ("COUNT", "SUM", "MAX", "MIN", "ROUND", "AVG", "DISTINCT"):
-                    return _strip_quotes(candidate)
-        return None
-
-    def _extract_select_aliases(select_part: str, expected_count: int) -> List[str]:
-        """
-        从 SELECT 部分（SELECT 到 FROM）提取每一列的 alias。
-        返回长度为 expected_count 的列表（不足用 colN 填充）。
-        """
-        if not select_part:
-            return [f"col{i}" for i in range(expected_count)]
-        items = _split_top_level_commas(select_part)
-        aliases = []
-        for it in items:
-            alias = _extract_alias_from_item(it)
-            aliases.append(alias)
-        final = []
-        for i in range(expected_count):
-            if i < len(aliases) and aliases[i]:
-                final.append(aliases[i])
-            else:
-                final.append(f"col{i}")
-        return final
-
-    
-    try:
-        messages = state["messages"]
-        last_message = messages[-1]
-        tool_call = last_message.tool_calls[0]
-        tool = next(t for t in tools if t.name == tool_call["name"])
-        state["status_messages"].append(f"Executing tool: {tool_call['name']}...")
-        time.sleep(1)
-        tool_result = tool.invoke(tool_call["args"])
-        logger.debug(f"Tool {tool_call['name']} result: {tool_result} (type: {type(tool_result)})")
-        sql_result = state.get("sql_result", [])
-        # 在 tool_node 中，替换原有处理 sql_db_query 的 try/except 分支为以下实现片段
-        if tool_call["name"] == "sql_db_query":
-            try:
-                # handle different tool_result types robustly
-                parsed = None
-
-                # If tool returned already a Python list/dict (some toolkits do), accept directly
-                if isinstance(tool_result, (list, dict)):
-                    parsed = tool_result
-                elif isinstance(tool_result, str):
-                    txt = tool_result.strip()
-                    # 1. 尝试解析为 JSON
-                    try:
-                        parsed = json.loads(txt)
-                    except Exception:
-                        # 2. 尝试 ast.literal_eval（python literal）
-                        try:
-                            parsed = ast.literal_eval(txt)
-                        except Exception:
-                            # 3. 尝试从字符串中抽取首个 JSON/array 子串再解析
-                            m = re.search(r'(\[.*\])', txt, flags=re.S)
-                            if m:
-                                try:
-                                    parsed = ast.literal_eval(m.group(1))
-                                except Exception:
-                                    try:
-                                        parsed = json.loads(m.group(1))
-                                    except Exception:
-                                        parsed = None
-                            else:
-                                m2 = re.search(r'(\{.*\})', txt, flags=re.S)
-                                if m2:
-                                    try:
-                                        parsed = ast.literal_eval(m2.group(1))
-                                    except Exception:
-                                        try:
-                                            parsed = json.loads(m2.group(1))
-                                        except Exception:
-                                            parsed = None
-                else:
-                    parsed = None
-
-                # Normalize parsed into a list of dicts
-                sql_result = []
-                if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-                    # already list of dicts
-                    sql_result = parsed
-                
-                # 在你的解析流程里，当 parsed 是 list of tuples 时，使用如下代码来构造 sql_result:
-                # 当 parsed 为 list of tuples 时（parsed 已由 json.loads/ast.literal_eval 等解析出）
-                elif isinstance(parsed, list) and parsed and isinstance(parsed[0], (list, tuple)):
-                    tuples = [list(t) for t in parsed]
-                    # 获取原始 query（若 tool_call 中 args 有 query 字段）
-                    query = ""
-                    if isinstance(tool_call, dict):
-                        query = tool_call.get("args", {}).get("query", "") or tool_call.get("args", {}).get("sql", "") or ""
-                    select_part = ""
-                    if isinstance(query, str) and "SELECT" in query.upper() and "FROM" in query.upper():
-                        try:
-                            select_part = re.split(r'\bSELECT\b', query, flags=re.IGNORECASE, maxsplit=1)[1]
-                            select_part = re.split(r'\bFROM\b', select_part, flags=re.IGNORECASE, maxsplit=1)[0]
-                        except Exception:
-                            select_part = ""
-                    expected_count = len(tuples[0])
-                    aliases = _extract_select_aliases(select_part, expected_count)
-                    logger.debug(f"Extracted column aliases: {aliases}")
-                    sql_result = []
-                    for row in tuples:
-                        d = {}
-                        for i, val in enumerate(row):
-                            col_name = aliases[i] if i < len(aliases) else f"col{i}"
-                            d[col_name] = val
-                        sql_result.append(d)
-                                
-                # elif isinstance(parsed, list) and parsed and isinstance(parsed[0], (list, tuple)):
-                #     # list of tuples: need column names to zip
-                #     tuples = [list(t) for t in parsed]
-                #     query = tool_call["args"].get("query", "")
-                #     # extract select part preserving case and aliases
-                #     select_part = ""
-                #     if "SELECT" in query.upper() and "FROM" in query.upper():
-                #         # 保留原 query 的大小写，先找 SELECT 到 FROM
-                #         try:
-                #             # 使用分割保留原
-                #             select_part = re.split(r'\bSELECT\b', query, flags=re.IGNORECASE, maxsplit=1)[1]
-                #             select_part = re.split(r'\bFROM\b', select_part, flags=re.IGNORECASE, maxsplit=1)[0]
-                #         except Exception:
-                #             select_part = ""
-                #     # 切分列（避免括号内逗号被切分）
-                #     if select_part:
-                #         cols = re.split(r',\s*(?![^()]*\))', select_part)
-                #         cols = [clean_column_name(c.strip()) for c in cols if c.strip()]
-                #     else:
-                #         cols = []
-                #     # If columns count matches tuple length use them; otherwise fallback to generic names
-                #     for row in tuples:
-                #         if cols and len(cols) == len(row):
-                #             sql_result.append(dict(zip(cols, row)))
-                #         else:
-                #             # fallback: name columns as col0, col1...
-                #             sql_result.append({f"col{i}": row[i] for i in range(len(row))})
-                elif isinstance(parsed, dict):
-                    # single dict -> wrap
-                    sql_result = [parsed]
-                else:
-                    # if parsed is None or empty, try to accept tool_result if it's already structured as Python object
-                    if isinstance(tool_result, list):
-                        sql_result = tool_result
-                    else:
-                        sql_result = []
-
-                logger.debug(f"Parsed sql_result: {sql_result}")
-            except Exception as e:
-                logger.error(f"Failed to parse sql_db_query result: {traceback.format_exc()}")
-                sql_result = []
-        
-        
-        # if tool_call["name"] == "sql_db_query":
-        #     try:
-        #         if isinstance(tool_result, str):
-        #             parsed_result = ast.literal_eval(tool_result)
-        #             if isinstance(parsed_result, list) and all(isinstance(item, tuple) for item in parsed_result):
-        #                 query = tool_call["args"]["query"]
-        #                 # Extract column names from the query more robustly
-        #                 query_upper = query.upper()
-        #                 if "SELECT" in query_upper:
-        #                     select_part = query_upper.split("SELECT")[1].split("FROM")[0].strip()
-        #                     # Handle quoted column names
-        #                     columns = re.findall(r'"[^"]*"|\'[^\']*\'|[^,\s]+', select_part)
-        #                     columns = [col.strip().strip('"').strip("'") for col in columns]
-        #                 else:
-        #                     # Fallback: use the first row's keys if available
-        #                     columns = list(sql_result[0].keys()) if sql_result else []
-                        
-        #                 # Clean column names
-        #                 cleaned_columns = [clean_column_name(col) for col in columns]
-        #                 sql_result = [dict(zip(cleaned_columns, row)) for row in parsed_result]
-        #             else:
-        #                 sql_result = parsed_result if isinstance(parsed_result, list) else []
-        #         else:
-        #             sql_result = tool_result if isinstance(tool_result, list) else []
-        #         logger.debug(f"Parsed sql_result: {sql_result}")
-        #     except Exception as e:
-        #         logger.error(f"Failed to parse sql_db_query result: {traceback.format_exc()}")
-        #         sql_result = []
-        # Store tool call and result in history
-        tool_history = state.get("tool_history", []) + [{"tool": tool_call["name"], "input": tool_call["args"], "output": str(tool_result)}]
         return {
-            "messages": [ToolMessage(content=str(tool_result), tool_call_id=tool_call["id"], name=tool_call["name"])],
+            "messages": [AIMessage(content=f"Error in agent decision: {str(e)}")],
+            "status_messages": state["status_messages"] + ["Error in agent decision."]
+        }
+
+def tool_node(state: State, tools: List) -> Dict:
+    """Tool node: Executes tools and updates state with sql_result."""
+    try:
+        last_message = state["messages"][-1]
+        tool_call = last_message.tool_calls[0]
+        tool_name = tool_call["name"]
+        tool_input = tool_call["args"]
+        tool = next((t for t in tools if t.name == tool_name), None)
+        if not tool:
+            raise ValueError(f"Tool {tool_name} not found")
+        
+        state["status_messages"].append(f"Executing tool: {tool_name}")
+        logger.debug(f"Executing tool: {tool_name} with input: {tool_input}")
+        result = tool.invoke(tool_input)
+        
+        # Update tool history
+        tool_history_entry = {"tool": tool_name, "input": tool_input, "output": result}
+        state["tool_history"] = state.get("tool_history", []) + [tool_history_entry]
+        
+        # Store sql_result for sql_db_query
+        sql_result = state.get("sql_result", [])
+        if tool_name == "sql_db_query":
+            try:
+                # Handle different result formats
+                if isinstance(result, list):
+                    if all(isinstance(row, dict) for row in result):
+                        sql_result = result
+                    else:
+                        # Handle tuple-based results
+                        keys = ["column_" + str(i) for i in range(len(result[0]))] if result else []
+                        sql_result = [dict(zip(keys, row)) for row in result]
+                elif isinstance(result, str):
+                    # Handle string result (e.g., "[('400G_AOC_QSFP112', 40.0), ...]")
+                    try:
+                        parsed_result = ast.literal_eval(result)
+                        if isinstance(parsed_result, list) and all(isinstance(row, tuple) for row in parsed_result):
+                            # Use column names from the query if possible
+                            query = tool_input.get("query", "")
+                            match = re.search(r'SELECT\s+(.+?)\s+FROM', query, re.IGNORECASE | re.DOTALL)
+                            if match:
+                                select_clause = match.group(1)
+                                columns = [col.strip().split(" AS ")[-1].strip('"') for col in select_clause.split(",")]
+                            else:
+                                columns = ["model", "percentage"]  # Fallback for this specific query
+                            sql_result = [dict(zip(columns, row)) for row in parsed_result]
+                        else:
+                            logger.warning(f"Parsed result is not a list of tuples: {type(parsed_result)}")
+                            sql_result = []
+                    except (ValueError, SyntaxError) as e:
+                        logger.error(f"Failed to parse string result: {result}, error: {e}")
+                        sql_result = []
+                else:
+                    logger.warning(f"Unexpected SQL result format: {type(result)}")
+                    sql_result = []
+                logger.debug(f"Stored sql_result: {sql_result[:3]}...")
+            except Exception as e:
+                logger.error(f"Failed to parse SQL result: {traceback.format_exc()}")
+                sql_result = []
+
+        return {
+            "messages": [ToolMessage(content=str(result), tool_call_id=tool_call["id"], name=tool_name)],
+            "tool_history": state["tool_history"],
             "sql_result": sql_result,
-            "tool_history": tool_history,
-            "status_messages": state["status_messages"]
+            "status_messages": state["status_messages"] + [f"Tool {tool_name} executed successfully."]
         }
     except Exception as e:
         logger.error(f"Tool node failed: {traceback.format_exc()}")
+        last_message = state["messages"][-1]
         return {
-            "messages": [ToolMessage(content="Tool error occurred.", tool_call_id=last_message.tool_calls[0]["id"], name=last_message.tool_calls[0]["name"])],
-            "sql_result": [],
+            "messages": [ToolMessage(content=f"Tool error: {str(e)}", tool_call_id=last_message.tool_calls[0]["id"], name=last_message.tool_calls[0]["name"])],
+            "sql_result": state.get("sql_result", []),
             "status_messages": state["status_messages"] + ["Error in tool execution."]
         }
 
 def viz_node(state: State) -> Dict:
-    """Visualization node: Determines viz_type and formats data based on question, history, and SQL result."""
+    """Visualization node: Chooses viz type, formats data and tables with LLM, and builds chart config."""
     try:
-        state["status_messages"].append("Generating visualization...")
-        logger.debug(f"viz_node received sql_result: {state.get('sql_result', [])}")
+        state["status_messages"].append("Generating visualization and tables...")
+        logger.debug(f"viz_node received sql_result: {state.get('sql_result', [])[:3]}")
         if not state.get("sql_result"):
-            logger.warning("No SQL result for viz, skipping visualization")
+            logger.warning("No SQL result for viz, skipping visualization and table formatting")
             state["viz_type"] = "none"
             state["viz_data"] = {}
             state["tables"] = []
@@ -547,9 +270,17 @@ def viz_node(state: State) -> Dict:
         # Extract conversation and tool history
         history = "\n".join([f"{msg.__class__.__name__}: {msg.content}" for msg in state["messages"] if isinstance(msg, (HumanMessage, AIMessage))])
         tool_history = "\n".join([f"Tool {h['tool']}: Input={h['input']}, Output={h['output']}" for h in state.get("tool_history", [])])
+        
+        # Choose visualization type
         state["viz_type"] = choose_viz_type(state["question"], state["sql_result"], history, tool_history)
-        state["viz_data"] = format_data_for_viz(state["viz_type"], state["sql_result"])
-        state["tables"] = format_tables(state["sql_result"], state["question"], state.get("grouping_suggestion", ""))
+        
+        # Format visualization data
+        formatted_data = format_data_for_viz(state["viz_type"], state["sql_result"], state["question"], history, tool_history)
+        state["viz_data"] = build_chart_config(state["viz_type"], formatted_data)
+        
+        # Format tables
+        state["tables"] = format_tables(state["sql_result"], state["question"], history, tool_history)
+        
         logger.info(f"Viz generated: type={state['viz_type']}, data={state['viz_data']}, tables={len(state['tables'])}")
         return state
     except Exception as e:
@@ -557,7 +288,7 @@ def viz_node(state: State) -> Dict:
         state["viz_type"] = "none"
         state["viz_data"] = {}
         state["tables"] = []
-        state["status_messages"] = state["status_messages"] + ["Error in visualization."]
+        state["status_messages"] = state["status_messages"] + ["Error in visualization and table formatting."]
         return state
 
 def should_continue(state: State) -> str:
@@ -581,7 +312,9 @@ def build_graph(db: SQLDatabase) -> tuple:
         workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", "viz": "viz"})
         workflow.add_edge("tools", "agent")
         workflow.add_edge("viz", END)
-        return workflow.compile(checkpointer=checkpointer), tools
+        compiled_graph = workflow.compile(checkpointer=checkpointer)
+        logger.info("LangGraph workflow built successfully")
+        return compiled_graph, tools
     except Exception as e:
         logger.error(f"Failed to build graph: {traceback.format_exc()}")
         raise
@@ -591,6 +324,7 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholde
     try:
         start_time = time.time()
         inputs["status_messages"] = []  # Initialize status messages
+        inputs["sql_result"] = []  # Ensure sql_result is initialized
         response = graph.invoke(inputs, config)
         processing_time = time.time() - start_time
         logger.debug(f"Graph response: {response}")
@@ -599,11 +333,9 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_placeholde
         if status_placeholder:
             status_placeholder.markdown(f"Processing complete in {processing_time:.2f} seconds.")
         
-        # Generate Chart.js configuration
-        chart_config = None
-        if response["viz_type"] != "none" and response["viz_data"]:
-            chart_config = response["viz_data"]
-        
+        # Chart config is now viz_data
+        chart_config = response.get("viz_data")
+
         # Filter messages to include only final AIMessage
         filtered_messages = [
             msg for msg in response["messages"]
@@ -642,14 +374,14 @@ if __name__ == "__main__":
         print("欢迎使用SQL Agent with Viz！输入您的查询问题（输入 'exit' 或 'quit' 退出）。")
         thread_id = str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
-        graph.invoke({"messages": [], "status_messages": []}, config)
+        graph.invoke({"messages": [], "status_messages": [], "sql_result": []}, config)
         while True:
             question = input("您的查询: ")
             if question.lower() in ["exit", "quit"]:
                 print("退出程序。")
                 break
             try:
-                inputs = {"messages": [HumanMessage(content=question)], "question": question, "status_messages": []}
+                inputs = {"messages": [HumanMessage(content=question)], "question": question, "status_messages": [], "sql_result": []}
                 result = process_query(graph, inputs, config)
                 print(f"答案: {result['answer']}")
                 print(f"Processing time: {result['processing_time']:.2f} seconds")

@@ -1,6 +1,6 @@
-# backend/utils/viz_utils.py
+# viz_utils.py
 """
-Utilities for choosing and formatting visualization data based on SQL results and conversation context.
+Utilities for choosing and formatting visualization data and tables using LLM, based on SQL results and conversation context.
 """
 import ast
 from langchain_core.prompts import ChatPromptTemplate
@@ -52,532 +52,396 @@ def initialize_llm() -> ChatOpenAI:
 
 llm = initialize_llm()
 
-def _extract_json_substring(s: str):
-    """尝试从文本中提取第一个 JSON 对象或数组字符串（包括被 ``` 包裹的情形）。"""
+# Graph instructions adapted from reference
+graph_instructions = {
+    "bar": '''
+Where data is: {
+  title: string,
+  xLabel: string,
+  yLabel: string,
+  labels: string[],
+  values: {data: number[], label: string}[]
+}
+Examples:
+1. data = {
+  title: "Average Income by Month",
+  xLabel: "Month",
+  yLabel: "Income",
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  values: [{data:[21.5, 25.0, 47.5, 64.8, 105.5, 133.2], label: 'Income'}]
+}
+2. data = {
+  title: "Player Performance by Series",
+  xLabel: "Series",
+  yLabel: "Performance",
+  labels: ['series A', 'series B', 'series C'],
+  values: [{data:[10, 15, 20], label: 'American'}, {data:[20, 25, 30], label: 'European'}]
+}
+''',
+    "horizontal_bar": '''
+Where data is: {
+  title: string,
+  xLabel: string,
+  yLabel: string,
+  labels: string[],
+  values: {data: number[], label: string}[]
+}
+Examples:
+1. data = {
+  title: "Average Income by Month",
+  xLabel: "Month",
+  yLabel: "Income",
+  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  values: [{data:[21.5, 25.0, 47.5, 64.8, 105.5, 133.2], label: 'Income'}]
+}
+2. data = {
+  title: "Player Performance by Series",
+  xLabel: "Series",
+  yLabel: "Performance",
+  labels: ['series A', 'series B', 'series C'],
+  values: [{data:[10, 15, 20], label: 'American'}, {data:[20, 25, 30], label: 'European'}]
+}
+''',
+    "line": '''
+Where data is: {
+  title: string,
+  xLabel: string,
+  yLabel: string,
+  xValues: number[] | string[],
+  yValues: { data: number[]; label: string }[]
+}
+Examples:
+1. data = {
+  title: "Momentum by Mass",
+  xLabel: "Mass",
+  yLabel: "Momentum",
+  xValues: ['2020', '2021', '2022', '2023', '2024'],
+  yValues: [{ data: [2, 5.5, 2, 8.5, 1.5], label: 'Momentum'}]
+}
+2. data = {
+  title: "Player Performance by Year",
+  xLabel: "Year",
+  yLabel: "Performance",
+  xValues: ['2020', '2021', '2022', '2023', '2024'],
+  yValues: [
+    { data: [2, 5.5, 2, 8.5, 1.5], label: 'American' },
+    { data: [2, 5.5, 2, 8.5, 1.5], label: 'European' }
+  ]
+}
+''',
+    "pie": '''
+Where data is: {
+  title: string,
+  data: { label: string, value: number }[]
+}
+Example:
+data = {
+  title: "Market Share Distribution",
+  data: [
+    { label: 'series A', value: 10 },
+    { label: 'series B', value: 15 },
+    { label: 'series C', value: 20 }
+  ]
+}
+''',
+    "scatter": '''
+Where data is: {
+  title: string,
+  xLabel: string,
+  yLabel: string,
+  series: { data: { x: number; y: number; id: number }[], label: string }[]
+}
+Examples:
+1. data = {
+  title: "Spending vs Quantity by Gender",
+  xLabel: "Amount Spent",
+  yLabel: "Quantity Bought",
+  series: [
+    {
+      data: [
+        { x: 100, y: 200, id: 1 },
+        { x: 120, y: 100, id: 2 },
+        { x: 170, y: 300, id: 3 }
+      ],
+      label: 'Men'
+    },
+    {
+      data: [
+        { x: 300, y: 300, id: 1 },
+        { x: 400, y: 500, id: 2 },
+        { x: 200, y: 700, id: 3 }
+      ],
+      label: 'Women'
+    }
+  ]
+}
+2. data = {
+  title: "Height vs Weight of Players",
+  xLabel: "Height",
+  yLabel: "Weight",
+  series: [
+    {
+      data: [
+        { x: 180, y: 80, id: 1 },
+        { x: 170, y: 70, id: 2 },
+        { x: 160, y: 60, id: 3 }
+      ],
+      label: 'Players'
+    }
+  ]
+}
+'''
+}
+
+def _extract_json_substring(s: str) -> str:
+    """Extract the first JSON object or array substring from text, handling code blocks."""
     if not s or not isinstance(s, str):
-        return None
-    # 去掉 markdown code fence
+        logger.debug("Empty or invalid input string for JSON extraction")
+        return ""
     s_clean = re.sub(r"```(?:json)?\s*", "", s, flags=re.IGNORECASE)
     s_clean = re.sub(r"\s*```", "", s_clean, flags=re.IGNORECASE).strip()
-
-    # 首先尝试直接找到 {...} 或 [...] 的第一段
-    m_obj = re.search(r'(\{.*\})', s_clean, flags=re.S)
-    m_arr = re.search(r'(\[.*\])', s_clean, flags=re.S)
-    # 优先对象
+    m_obj = re.search(r'(\{.*?\})', s_clean, flags=re.DOTALL)
+    m_arr = re.search(r'(\[.*?\])', s_clean, flags=re.DOTALL)
     if m_obj:
         return m_obj.group(1)
     if m_arr:
         return m_arr.group(1)
-    # 如果整段就是裸 JSON-like 则返回整段
-    return s_clean
+    return s_clean if s_clean else ""
+
+def parse_llm_response(content: str) -> Dict:
+    """Parse LLM response to extract and validate JSON."""
+    try:
+        json_sub = _extract_json_substring(content)
+        if not json_sub:
+            logger.warning("No JSON content found in LLM response")
+            return {}
+        try:
+            parsed = json.loads(json_sub)
+            logger.debug(f"Successfully parsed JSON: {parsed}")
+            return parsed
+        except json.JSONDecodeError:
+            try:
+                parsed = ast.literal_eval(json_sub)
+                if isinstance(parsed, (dict, list)):
+                    logger.debug(f"Parsed via ast.literal_eval: {parsed}")
+                    return parsed
+                logger.warning("Parsed content is not a dictionary or list")
+                return {}
+            except Exception:
+                logger.warning(f"Failed to parse JSON or literal: {json_sub}")
+                return {}
+    except Exception as e:
+        logger.error(f"Failed to parse LLM response: {traceback.format_exc()}")
+        return {}
 
 def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", tool_history: str = "") -> str:
-    """Choose visualization type based on question, SQL result, and conversation/tool history, considering user intent."""
+    """Choose visualization type using LLM based on question, SQL result, and context."""
     try:
-        viz_types = ["bar", "line", "pie", "scatter", "none"]
+        viz_types = ["bar", "horizontal_bar", "line", "pie", "scatter", "none"]
         prompt = ChatPromptTemplate.from_template(
             """You are a data visualization expert. Based on:
             - User question: '{question}'
             - Conversation history: '{history}'
-            - Tool history (SQL queries and results): '{tool_history}'
+            - Tool history (SQL queries and results): '{tool_tool_history}'
             - SQL query result (first 3 rows): {sample_result}
-            First, detect user intent for visualization: 
-            - Explicit intent: If the question or history contains keywords like 'chart', 'graph', 'visualize', 'plot', 'show me a', or explicitly requests a visual, proceed to select a viz type.
-            - Implicit intent: If the query involves trends (e.g., 'trend', 'over time', 'change over'), distributions (e.g., 'distribution', 'proportion', 'percentage of'), comparisons (e.g., 'compare', 'vs', 'ranking'), or aggregations that benefit from visuals (e.g., 'group by', 'top N'), consider visualization even without explicit request, as charts can enhance understanding.
-            - Otherwise, default to 'none' even if data suits visualization.
-            If visualization is intended (explicit or implicit), select the most appropriate type from: {viz_types}.
-            - Use 'bar' for comparisons or aggregations across categories (e.g., sums, counts, or percentages by category). For horizontal bar charts, 'bar' will be used with appropriate options.
-            - Use 'line' for trends over time (e.g., values over dates or sequential data).
-            - Use 'pie' for proportions or percentages of a total (e.g., distribution across categories).
-            - Use 'scatter' for correlations between two numeric variables.
-            - Use 'none' if no visualization is suitable or not intended (e.g., single value, empty result, unsuitable data, or no visual intent).
-            Consider historical context and tool outputs (e.g., keywords like 'trend', 'compare', prior SQL results) to refine the choice.
-            Ensure the selected type matches the data structure (e.g., at least one categorical and one numeric column for bar/pie, two numeric columns for scatter).
-            Output a JSON object: {{"viz_type": "chosen_type"}}."""
+            Detect user intent for visualization:
+            - Explicit intent: Keywords like 'chart', 'graph', 'visualize', 'plot', 'show me a', or explicit visual requests.
+            - Implicit intent: Queries involving trends ('trend', 'over time'), distributions ('distribution', 'proportion'), comparisons ('compare', 'vs', 'ranking'), or aggregations ('group by', 'top N').
+            - Default to 'none' if no visual intent or unsuitable data.
+            Select the most appropriate type from: {viz_types}.
+            - 'bar': Comparisons across categories (>2 categories), e.g., "Sales by product".
+            - 'horizontal_bar': Comparisons with few categories or large disparities, e.g., "Revenue of A vs B".
+            - 'line': Trends over time, e.g., "Website visits over the year".
+            - 'pie': Proportions, e.g., "Market share distribution".
+            - 'scatter': Correlations between two numeric variables, e.g., "Height vs weight".
+            - 'none': Single values, empty results, or no visual intent.
+            Ensure data structure compatibility (e.g., categorical + numeric for bar/pie, two numerics for scatter).
+            Output JSON: {{"viz_type": "chosen_type"}}."""
         )
         chain = prompt | llm
         sample_result = json.dumps(sql_result[:3])
-        logger.debug(f"Choosing viz type with question: {question}, history: {history}, tool_history: {tool_history}, sample_result: {sample_result}")
+        logger.debug(f"Choosing viz type - Question: {question}, History: {history}, Tool History: {tool_history}, Sample Result: {sample_result}")
         response = chain.invoke({"question": question, "history": history, "tool_history": tool_history, "sample_result": sample_result, "viz_types": ", ".join(viz_types)})
         content = response.content if hasattr(response, "content") else str(response)
-        logger.debug(f"LLM response content: {content}")
-        try:
-            # ------ 1) 先尝试从 response.content 中抽出 JSON 子串并解析 ------
-            viz_type = None
-            json_sub = _extract_json_substring(content)
-            if json_sub:
-                try:
-                    parsed = json.loads(json_sub)
-                    if isinstance(parsed, dict) and "viz_type" in parsed:
-                        viz_type = str(parsed["viz_type"]).lower()
-                except Exception:
-                    # 不是严格的 JSON，再尝试 ast.literal_eval（python literal）
-                    try:
-                        parsed2 = ast.literal_eval(json_sub)
-                        if isinstance(parsed2, dict) and "viz_type" in parsed2:
-                            viz_type = str(parsed2["viz_type"]).lower()
-                    except Exception:
-                        viz_type = None
-
-            # ------ 2) 如果仍无效，尝试直接在纯文本中用关键词启发式判断 ------
-            if not viz_type:
-                low = (question or "").lower() + " " + (history or "").lower() + " " + (tool_history or "").lower()
-                if any(k in low for k in ["trend", "over time", "over the", "last", "month", "week", "day", "时间", "趋势", "周为单位", "月为单位", "按时间","按天","按周","按月"]):
-                    viz_type = "line"
-                elif any(k in low for k in ["compare", "top", "rank", "by", "group", "分布", "按"]):
-                    viz_type = "bar"
-                elif any(k in low for k in ["percent", "proportion", "percentage", "占比", "比例"]):
-                    viz_type = "pie"
-                elif any(k in low for k in ["correlat", "correlation", "scatter", "相关性", "散点"]):
-                    viz_type = "scatter"
-                else:
-                    viz_type = "none"
-
-            if viz_type not in viz_types:
-                viz_type = "none"
-
-            logger.info(f"Chosen viz type: {viz_type}")
-            return viz_type
-        except Exception as e:
-            logger.error(f"Viz type choice failed: {traceback.format_exc()}")
-            return "none"
+        parsed = parse_llm_response(content)
+        viz_type = parsed.get("viz_type", "none").lower()
+        if viz_type not in viz_types:
+            logger.warning(f"Invalid viz_type '{viz_type}', defaulting to 'none'")
+            viz_type = "none"
+        logger.info(f"Chosen viz_type: {viz_type}")
+        return viz_type
     except Exception as e:
-        logger.error(f"Viz type choice failed: {traceback.format_exc()}")
+        logger.error(f"Failed to choose viz type: {traceback.format_exc()}")
         return "none"
 
-    #         viz_type = response_json.get("viz_type", "none").lower()
-    #         if viz_type not in viz_types:
-    #             logger.warning(f"Invalid viz type returned: {viz_type}, defaulting to 'bar' for comparison queries")
-    #             viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
-    #     except json.JSONDecodeError:
-    #         logger.warning("LLM returned invalid JSON, defaulting to 'bar' for comparison queries")
-    #         viz_type = "bar" if any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["compare", "by", "group", "rank", "order", "分布"]) else "none"
-    #     logger.info(f"Chosen viz type: {viz_type}")
-    #     return viz_type
-    
-
-def format_data_for_viz_old(viz_type: str, sql_result: List[Dict]) -> Dict:
-    """Format SQL result for Chart.js based on visualization type."""
+def format_data_for_viz(viz_type: str, sql_result: List[Dict], question: str, history: str = "", tool_history: str = "") -> Dict:
+    """Format visualization data using LLM, including title and labels."""
     try:
         if viz_type == "none" or not sql_result:
             logger.debug("No visualization or empty result, returning empty dict")
             return {}
-        
-        if not isinstance(sql_result, list) or not all(isinstance(row, dict) for row in sql_result):
-            logger.error(f"Invalid SQL result format: {sql_result}")
-            return {}
-        
-        keys = list(sql_result[0].keys())
-        logger.debug(f"SQL result keys: {keys}")
-        if len(keys) < 2:
-            logger.error("Need at least 2 columns for visualization")
-            return {}
-        
-        label_col = keys[0]
-        secondary_label_col = keys[1] if len(keys) > 1 else None
-        value_col = None
-        for key in reversed(keys):
-            if any(isinstance(row.get(key), (int, float)) and not isinstance(row.get(key), bool) for row in sql_result):
-                value_col = key
-                break
-        if not value_col:
-            logger.warning("No numeric column found for values, returning empty viz data")
-            return {}
-        
-        is_numeric = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
-        
-        if viz_type == "bar":
-            if secondary_label_col:
-                labels = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
-            else:
-                labels = [str(row[label_col]) for row in sql_result]
-            values = [float(row[value_col]) if is_numeric(row.get(value_col)) else 0 for row in sql_result]
-            if not any(values):
-                logger.warning("All values are zero or non-numeric, returning empty viz data")
-                return {}
-            
-            # Improved horizontal bar detection
-            # is_horizontal = (
-            #     len(labels) > 10 or  # Many categories suggest horizontal
-            #     any(keyword in (question.lower() + history.lower() + tool_history.lower()) for keyword in ["分布", "按", "by", "group", "compare", "vs"]) or
-            #     "厂商" in str(label_col) or "型号" in str(label_col)  # Vendor/model distribution
-            # )
-            is_horizontal = False
-            
-            chart_config = {
-                "type": "bar",
-                "data": {
-                    "labels": labels,
-                    "datasets": [{
-                        "label": value_col,
-                        "data": values,
-                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FFCE56"] * 5,  # Repeat colors for more data points
-                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FFCE56"] * 5,
-                        "borderWidth": 1
-                    }]
-                },
-                "options": {
-                    "indexAxis": "y" if is_horizontal else "x",
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {
-                        ("y" if is_horizontal else "x"): {
-                            "beginAtZero": True,
-                            "title": {
-                                "display": True,
-                                "text": value_col
-                            }
-                        },
-                        ("x" if is_horizontal else "y"): {
-                            "title": {
-                                "display": True,
-                                "text": label_col + (f" ({secondary_label_col})" if secondary_label_col else "")
-                            }
-                        }
-                    },
-                    "plugins": {
-                        "title": {
-                            "display": True,
-                            "text": f"{value_col} by {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
-                        },
-                        "legend": {
-                            "display": True
-                        }
-                    }
-                }
-            }
-            return chart_config
-        elif viz_type == "line":
-            if secondary_label_col:
-                x = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
-            else:
-                x = [str(row[label_col]) for row in sql_result]
-            y = [float(row[value_col]) if is_numeric(row.get(value_col)) else 0 for row in sql_result]
-            if not any(y):
-                logger.warning("All y-values are zero or non-numeric, returning empty viz data")
-                return {}
-            return {
-                "type": "line",
-                "data": {
-                    "labels": x,
-                    "datasets": [{
-                        "label": value_col,
-                        "data": y,
-                        "borderColor": "#36A2EB",
-                        "fill": False
-                    }]
-                },
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {
-                        "x": {
-                            "title": {
-                                "display": True,
-                                "text": label_col + (f" ({secondary_label_col})" if secondary_label_col else "")
-                            }
-                        },
-                        "y": {
-                            "beginAtZero": True,
-                            "title": {
-                                "display": True,
-                                "text": value_col
-                            }
-                        }
-                    },
-                    "plugins": {
-                        "title": {
-                            "display": True,
-                            "text": f"{value_col} over {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
-                        }
-                    }
-                }
-            }
-        elif viz_type == "pie":
-            if secondary_label_col:
-                labels = [f"{row[label_col]} ({row[secondary_label_col]})" for row in sql_result]
-            else:
-                labels = [str(row[label_col]) for row in sql_result]
-            values = [float(row[value_col]) if is_numeric(row.get(value_col)) else 0 for row in sql_result]
-            if not any(values):
-                logger.warning("All values are zero or non-numeric, returning empty viz data")
-                return {}
-            return {
-                "type": "pie",
-                "data": {
-                    "labels": labels,
-                    "datasets": [{
-                        "label": value_col,
-                        "data": values,
-                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
-                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"],
-                        "borderWidth": 1
-                    }]
-                },
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "plugins": {
-                        "title": {
-                            "display": True,
-                            "text": f"{value_col} by {label_col}" + (f" ({secondary_label_col})" if secondary_label_col else "")
-                        },
-                        "legend": {
-                            "display": True
-                        }
-                    }
-                }
-            }
-        elif viz_type == "scatter":
-            numeric_cols = [key for key in keys if any(is_numeric(row.get(key)) for row in sql_result)]
-            if len(numeric_cols) < 2:
-                logger.warning("Need at least two numeric columns for scatter plot, returning empty viz data")
-                return {}
-            x_key, y_key = numeric_cols[-2], numeric_cols[-1]
-            series = []
-            for i, row in enumerate(sql_result):
-                x_val = row.get(x_key)
-                y_val = row.get(y_key)
-                if is_numeric(x_val) and is_numeric(y_val):
-                    series.append({"x": float(x_val), "y": float(y_val)})
-            if not series:
-                logger.warning("No valid numeric pairs for scatter plot, returning empty viz data")
-                return {}
-            return {
-                "type": "scatter",
-                "data": {
-                    "datasets": [{
-                        "label": f"{x_key} vs {y_key}",
-                        "data": series,
-                        "backgroundColor": "#36A2EB",
-                        "borderColor": "#36A2EB",
-                        "pointRadius": 5
-                    }]
-                },
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {
-                        "x": {
-                            "title": {
-                                "display": True,
-                                "text": x_key
-                            }
-                        },
-                        "y": {
-                            "title": {
-                                "display": True,
-                                "text": y_key
-                            }
-                        }
-                    },
-                    "plugins": {
-                        "title": {
-                            "display": True,
-                            "text": f"{y_key} vs {x_key}"
-                        }
-                    }
-                }
-            }
-        else:
+        if viz_type not in graph_instructions:
             logger.error(f"Unsupported viz type: {viz_type}")
             return {}
+        instructions = graph_instructions[viz_type]
+        prompt = ChatPromptTemplate.from_template(
+            """You are a data visualization expert. Format the data for visualization based on:
+            - User question: '{question}'
+            - Conversation history: '{history}'
+            - Tool history: '{tool_history}'
+            - SQL results: {results}
+            Follow this structure and examples: {instructions}
+            Provide meaningful 'title', 'xLabel', 'yLabel' (if applicable) based on the question and data.
+            Ensure numerical values are floats, handle groupings logically, and replace NULL/empty values with 'Unknown'.
+            Output ONLY the JSON object."""
+        )
+        chain = prompt | llm
+        response = chain.invoke({
+            "question": question,
+            "history": history,
+            "tool_history": tool_history,
+            "results": json.dumps(sql_result),
+            "instructions": instructions
+        })
+        content = response.content if hasattr(response, "content") else str(response)
+        logger.debug(f"LLM formatting response: {content}")
+        formatted_data = parse_llm_response(content)
+        if not formatted_data:
+            logger.error("Failed to parse formatted data from LLM response")
+            raise ValueError("Invalid formatted data")
+        logger.info(f"Formatted viz data: {formatted_data}")
+        return formatted_data
     except Exception as e:
         logger.error(f"Data formatting failed: {traceback.format_exc()}")
         return {}
-    
-def _try_cast_float(v):
-    """尝试把值转为 float，失败返回 None（把 '123', '1e3' 等字符串视作数字）。"""
-    if v is None:
-        return None
-    if isinstance(v, (int, float)) and not isinstance(v, bool):
-        return float(v)
+
+def format_tables(sql_result: List[Dict], question: str, history: str = "", tool_history: str = "") -> List[Dict]:
+    """Format SQL results into tables using LLM for title and structure."""
     try:
-        s = str(v).strip()
-        # 排除空字符串和非数字占位
-        if s == "" or s.lower() in ["nan", "none", "null", "na", "n/a"]:
-            return None
-        # 处理百分号字符串：例如 "12.3%" -> 12.3
-        if s.endswith("%"):
-            return float(s.rstrip("%"))  # 返回百分数的原值（如 12.3）
-        return float(s)
-    except Exception:
-        return None
-
-def _looks_like_date(s: str) -> bool:
-    """非常轻量的日期检测（识别 'YYYY-MM-DD', 'YYYY/MM/DD', '2025-10-22 12:00' 等）。"""
-    if not isinstance(s, str):
-        return False
-    s = s.strip()
-    # 简单模式
-    if re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}', s):
-        return True
-    # 带时间部分
-    if re.match(r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+\d{1,2}:', s):
-        return True
-    return False
-
-def format_data_for_viz(viz_type: str, sql_result: List[Dict]) -> Dict:
-    """Format SQL result for Chart.js based on visualization type (更鲁棒的列识别与标题生成)."""
-    try:
-        if viz_type == "none" or not sql_result:
-            logger.debug("No visualization or empty result, returning empty dict")
-            return {}
-
-        if not isinstance(sql_result, list) or not all(isinstance(row, dict) for row in sql_result):
-            logger.error(f"Invalid SQL result format: {type(sql_result)}")
-            return {}
-
-        keys = list(sql_result[0].keys())
-        logger.debug(f"SQL result keys: {keys}")
-        if not keys:
-            return {}
-
-        # --- 识别数值列 & 类别列（支持数字字符串） ---
-        numeric_cols = []
-        categorical_cols = []
-        date_cols = []
-        for k in keys:
-            values = [row.get(k) for row in sql_result]
-            if any(_try_cast_float(v) is not None for v in values):
-                numeric_cols.append(k)
-            elif any(isinstance(v, str) for v in values):
-                categorical_cols.append(k)
-            # 日期检测优先级：如果字符串看起来像日期，则标记为日期
-            if any(_looks_like_date(v) for v in values if isinstance(v, str)):
-                date_cols.append(k)
-
-        # 选择 x (label) 和 y (value)
-        label_col = None
-        value_col = None
-
-        # 优先：如果是时间序列且 viz_type 是 line 或样子上需要趋势，则把日期列作为 x
-        if viz_type == "line" and date_cols:
-            label_col = date_cols[0]
-        # 否则：优先选类别列作为 x
-        if not label_col:
-            if categorical_cols:
-                label_col = categorical_cols[0]
-            elif keys:
-                # 没有类别列，选择第一个非数值列或第一个列作为 label
-                non_numeric = [k for k in keys if k not in numeric_cols]
-                label_col = non_numeric[0] if non_numeric else keys[0]
-
-        # y 选择数值列（优先最近的 numeric 列）
-        if numeric_cols:
-            value_col = numeric_cols[0]
-        else:
-            # 如果找不到数值列，尝试将第二列强转为数值
-            if len(keys) > 1:
-                value_col = keys[1]
-            else:
-                value_col = keys[0]
-
-        # 生成 labels 和 values（支持数值字符串）
-        def to_label(v):
-            return "" if v is None else str(v)
-
-        labels = [to_label(row.get(label_col)) for row in sql_result]
-        values = []
-        for row in sql_result:
-            cast = _try_cast_float(row.get(value_col))
-            values.append(cast if cast is not None else 0.0)
-
-        # 如果全部为 0 或无效，则认为无法绘图
-        if not any(v != 0.0 for v in values):
-            logger.warning("All values are zero or non-numeric, returning empty viz data")
-            return {}
-
-        # 自动生成图表标题文本
-        title_text = f"{value_col} by {label_col}" if label_col and value_col and label_col != value_col else f"{value_col}"
-
-        # 生成不同类型的 Chart.js config（保留你原有结构，但改用自动推断的列名/labels/values）
-        if viz_type == "bar":
-            chart_config = {
-                "type": "bar",
-                "data": {
-                    "labels": labels,
-                    "datasets": [{
-                        "label": value_col,
-                        "data": values,
-                        # 不在代码里固定颜色会影响展示一致性，这里保留一组可重复的 palette（可按需换成随机）
-                        "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"] * 10,
-                        "borderColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"] * 10,
-                        "borderWidth": 1
-                    }]
-                },
-                "options": {
-                    "indexAxis": "x",
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {
-                        "y": {
-                            "beginAtZero": True,
-                            "title": {"display": True, "text": value_col}
-                        },
-                        "x": {
-                            "title": {"display": True, "text": label_col}
-                        }
-                    },
-                    "plugins": {
-                        "title": {"display": True, "text": title_text},
-                        "legend": {"display": False}
-                    }
-                }
+        if not sql_result:
+            logger.debug("No SQL result for table formatting, returning empty list")
+            return []
+        prompt = ChatPromptTemplate.from_template(
+            """You are a data expert formatting SQL results into tables. Based on:
+            - User question: '{question}'
+            - Conversation history: '{history}'
+            - Tool history: '{tool_history}'
+            - SQL results: {results}
+            Format the data into a list of tables, each with a title and data:
+            {
+                "title": string,
+                "data": { "column_name": value }[]
             }
-            return chart_config
-
-        if viz_type == "line":
-            return {
-                "type": "line",
-                "data": {"labels": labels, "datasets": [{"label": value_col, "data": values, "fill": False}]},
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {
-                        "x": {"title": {"display": True, "text": label_col}},
-                        "y": {"beginAtZero": True, "title": {"display": True, "text": value_col}}
-                    },
-                    "plugins": {"title": {"display": True, "text": title_text}}
-                }
-            }
-
-        if viz_type == "pie":
-            return {
-                "type": "pie",
-                "data": {"labels": labels, "datasets": [{"label": value_col, "data": values, "backgroundColor": ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF"]} ]},
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "plugins": {"title": {"display": True, "text": title_text}, "legend": {"display": True}}
-                }
-            }
-
-        if viz_type == "scatter":
-            # 需要两个 numeric 列
-            numeric_found = [c for c in keys if any(_try_cast_float(r.get(c)) is not None for r in sql_result)]
-            if len(numeric_found) < 2:
-                logger.warning("Need at least two numeric columns for scatter plot, returning empty viz data")
-                return {}
-            x_key, y_key = numeric_found[0], numeric_found[1]
-            series = [{"x": _try_cast_float(r.get(x_key)), "y": _try_cast_float(r.get(y_key))} for r in sql_result if (_try_cast_float(r.get(x_key)) is not None and _try_cast_float(r.get(y_key)) is not None)]
-            if not series:
-                logger.warning("No valid numeric pairs for scatter plot, returning empty viz data")
-                return {}
-            return {
-                "type": "scatter",
-                "data": {"datasets": [{"label": f"{y_key} vs {x_key}", "data": series}]},
-                "options": {
-                    "responsive": True,
-                    "maintainAspectRatio": False,
-                    "scales": {"x": {"title": {"display": True, "text": x_key}}, "y": {"title": {"display": True, "text": y_key}}},
-                    "plugins": {"title": {"display": True, "text": f"{y_key} vs {x_key}"}}
-                }
-            }
-
-        # 不支持的情况
-        logger.error(f"Unsupported viz type: {viz_type}")
-        return {}
+            - Provide a meaningful table title based on the question.
+            - Use column names that are human-readable, derived from the question and data.
+            - Replace NULL/empty values with 'Unknown'.
+            - If grouping is logical (e.g., by category), create multiple tables.
+            Output ONLY the JSON object: [{"title": string, "data": { "column_name": value }[]}]"""
+        )
+        chain = prompt | llm
+        response = chain.invoke({
+            "question": question,
+            "history": history,
+            "tool_history": tool_history,
+            "results": json.dumps(sql_result)
+        })
+        content = response.content if hasattr(response, "content") else str(response)
+        logger.debug(f"LLM table formatting response: {content}")
+        tables = parse_llm_response(content)
+        if not isinstance(tables, list):
+            logger.error("Table formatting did not return a list")
+            return []
+        logger.info(f"Formatted tables: {tables}")
+        return tables
     except Exception as e:
-        logger.error(f"Data formatting failed: {traceback.format_exc()}")
+        logger.error(f"Table formatting failed: {traceback.format_exc()}")
+        return []
+
+def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
+    """Build Chart.js configuration from LLM-formatted data."""
+    try:
+        if not formatted_data or viz_type == "none":
+            logger.debug("No formatted data or viz_type is none, returning empty config")
+            return {}
+        colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"] * 10
+        title = formatted_data.get("title", "Chart")
+        config = {
+            "type": viz_type if viz_type != "horizontal_bar" else "bar",
+            "data": {},
+            "options": {
+                "responsive": True,
+                "maintainAspectRatio": False,
+                "plugins": {
+                    "title": {"display": True, "text": title},
+                    "legend": {"display": True}
+                }
+            }
+        }
+
+        if viz_type in ["bar", "horizontal_bar"]:
+            labels = formatted_data.get("labels", [])
+            values = formatted_data.get("values", [])
+            datasets = [
+                {
+                    "label": v["label"],
+                    "data": [float(x) if x is not None else 0.0 for x in v["data"]],
+                    "backgroundColor": colors[i % len(colors)],
+                    "borderColor": colors[i % len(colors)],
+                    "borderWidth": 1
+                } for i, v in enumerate(values)
+            ]
+            config["data"] = {"labels": labels, "datasets": datasets}
+            config["options"]["scales"] = {
+                "x": {"title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")}},
+                "y": {"beginAtZero": True, "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
+            }
+            if viz_type == "horizontal_bar":
+                config["options"]["indexAxis"] = "y"
+
+        elif viz_type == "line":
+            config["data"] = {
+                "labels": formatted_data.get("xValues", []),
+                "datasets": [
+                    {
+                        "label": v["label"],
+                        "data": [float(x) if x is not None else 0.0 for x in v["data"]],
+                        "fill": False,
+                        "borderColor": colors[i % len(colors)]
+                    } for i, v in enumerate(formatted_data.get("yValues", []))
+                ]
+            }
+            config["options"]["scales"] = {
+                "x": {"title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")}},
+                "y": {"beginAtZero": True, "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
+            }
+
+        elif viz_type == "pie":
+            data_list = formatted_data.get("data", [])
+            labels = [d["label"] if d["label"] is not None else "Unknown" for d in data_list]
+            values = [float(d["value"]) if d["value"] is not None else 0.0 for d in data_list]
+            config["data"] = {
+                "labels": labels,
+                "datasets": [{"data": values, "backgroundColor": colors[:len(values)]}]
+            }
+            config["options"]["plugins"]["legend"]["display"] = True
+
+        elif viz_type == "scatter":
+            series = formatted_data.get("series", [])
+            datasets = [
+                {
+                    "label": s["label"],
+                    "data": [{"x": float(d["x"]) if d["x"] is not None else 0.0, "y": float(d["y"]) if d["y"] is not None else 0.0, "id": d["id"]} for d in s["data"]],
+                    "backgroundColor": colors[i % len(colors)]
+                } for i, s in enumerate(series)
+            ]
+            config["data"] = {"datasets": datasets}
+            config["options"]["scales"] = {
+                "x": {"title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")}},
+                "y": {"title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
+            }
+
+        logger.info(f"Built chart config for {viz_type}: {config}")
+        return config
+    except Exception as e:
+        logger.error(f"Failed to build chart config: {traceback.format_exc()}")
         return {}
