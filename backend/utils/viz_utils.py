@@ -407,19 +407,6 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
             return {}
         colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"] * 10
         title = formatted_data.get("title", "Chart")
-        # config = {
-        #     "type": viz_type if viz_type != "horizontal_bar" else "bar",
-        #     "data": {},
-        #     "options": {
-        #         "responsive": True,
-        #         "maintainAspectRatio": False,
-        #         "plugins": {
-        #             "title": {"display": True, "text": title},
-        #             "legend": {"display": True}
-        #         }
-        #     }
-        # }
-        title = formatted_data.get("title", "Chart")
         config = {
             "type": viz_type if viz_type != "horizontal_bar" else "bar",
             "data": {},
@@ -428,17 +415,30 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
                 "maintainAspectRatio": False,
                 "plugins": {
                     "title": {"display": True, "text": title},
-                    "legend": {"display": True},
-                    "datalabels": {  # 新增：显示数据标签
-                        "display": True,
-                        "align": "start",  # 标签位置（center/end/start）
-                        "color": "black",   # 标签颜色
-                        "font": {"size": 12},  # 字体大小
-                        "formatter": "function(value, context) { return Math.round(value * 100) / 100; }"
-                    }
+                    "legend": {"display": True}
                 }
             }
         }
+        # title = formatted_data.get("title", "Chart")
+        # config = {
+        #     "type": viz_type if viz_type != "horizontal_bar" else "bar",
+        #     "data": {},
+        #     "options": {
+        #         "responsive": True,
+        #         "maintainAspectRatio": False,
+        #         "plugins": {
+        #             "title": {"display": True, "text": title},
+        #             "legend": {"display": True},
+        #             "datalabels": {  # 新增：显示数据标签
+        #                 "display": True,
+        #                 "align": "start",  # 标签位置（center/end/start）
+        #                 "color": "black",   # 标签颜色
+        #                 "font": {"size": 12},  # 字体大小
+        #                 "formatter": "function(value, context) { return Math.round(value * 100) / 100; }"
+        #             }
+        #         }
+        #     }
+        # }
         # config = {
         #     "type": viz_type if viz_type != "horizontal_bar" else "bar",
         #     "data": {},
