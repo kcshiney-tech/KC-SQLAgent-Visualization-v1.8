@@ -292,44 +292,67 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
     # Display processing time
     status_placeholder.markdown(f"处理时间: {result['processing_time']:.2f}秒")
 
-# 添加简单认证（企业中替换为 OAuth/LDAP）
-def authenticate():
-    """简单用户名/密码认证。"""
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if not st.session_state.authenticated:
-        username = st.text_input("用户名")
-        password = st.text_input("密码", type="password")
-        if st.button("登录"):
-            # 企业中：检查数据库或 LDAP
-            if username == "admin" and password == "password":  # 示例，生产中移除硬编码
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("无效凭证")
-                return False
-    return st.session_state.authenticated
+# # 添加简单认证（企业中替换为 OAuth/LDAP）
+# def authenticate():
+#     """简单用户名/密码认证。"""
+#     if "authenticated" not in st.session_state:
+#         st.session_state.authenticated = False
+#     if not st.session_state.authenticated:
+#         username = st.text_input("用户名")
+#         password = st.text_input("密码", type="password")
+#         if st.button("登录"):
+#             # 企业中：检查数据库或 LDAP
+#             if username == "admin" and password == "password":  # 示例，生产中移除硬编码
+#                 st.session_state.authenticated = True
+#                 st.rerun()
+#             else:
+#                 st.error("无效凭证")
+#                 return False
+#     return st.session_state.authenticated
 
-# 添加速率限制（每个会话每分钟限 10 查询）
-def check_rate_limit():
-    if "last_query_time" not in st.session_state:
-        st.session_state.last_query_time = 0
-        st.session_state.query_count = 0
-    now = time.time()
-    if now - st.session_state.last_query_time > 60:
-        st.session_state.query_count = 0
-        st.session_state.last_query_time = now
-    if st.session_state.query_count >= 10:
-        st.error("查询速率超过限制，请稍后重试。")
-        return False
-    st.session_state.query_count += 1
-    return True
+# def authenticate():
+#     """简单用户名/密码认证，支持多个用户。"""
+#     if "authenticated" not in st.session_state:
+#         st.session_state.authenticated = False
+#     if not st.session_state.authenticated:
+#         username = st.text_input("用户名")
+#         password = st.text_input("密码", type="password")
+#         if st.button("登录"):
+#             # 定义用户字典：{用户名: 密码}
+#             users = {
+#                 "admin": "password",      # 管理员
+#                 "user1": "pass123",       # 用户1
+#                 "user2": "secret456"      # 用户2
+#             }
+#             if username in users and users[username] == password:
+#                 st.session_state.authenticated = True
+#                 st.session_state.current_user = username  # 可选：存储当前用户用于日志
+#                 st.rerun()
+#             else:
+#                 st.error("无效凭证")
+#                 return False
+#     return st.session_state.authenticated
+
+# # 添加速率限制（每个会话每分钟限 10 查询）
+# def check_rate_limit():
+#     if "last_query_time" not in st.session_state:
+#         st.session_state.last_query_time = 0
+#         st.session_state.query_count = 0
+#     now = time.time()
+#     if now - st.session_state.last_query_time > 60:
+#         st.session_state.query_count = 0
+#         st.session_state.last_query_time = now
+#     if st.session_state.query_count >= 10:
+#         st.error("查询速率超过限制，请稍后重试。")
+#         return False
+#     st.session_state.query_count += 1
+#     return True
 
 # Streamlit UI
 st.title("灵图SQL视图")
 
-if not authenticate():
-    st.stop()
+# if not authenticate():
+#     st.stop()
 
 # Tabs for Chat and Dashboard
 tab1, tab2 = st.tabs(["对话", "仪表板"])
