@@ -1,7 +1,6 @@
 # app.py
 """
-Streamlit frontend for the SQL Agent with visualization capabilities.
-Provides a ChatGPT-like interface with session management, synchronous Chinese tool messages, and historical conversation sidebar.
+Streamlit frontend for the SQL Agent with chat interface.
 """
 import streamlit as st
 import streamlit.components.v1 as components
@@ -29,7 +28,7 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler("frontend.log", encoding="utf-8"),
-        logging.FileHandler("error.log", encoding="utf-8", mode="a"),  # Dedicated error log
+        logging.FileHandler("error.log", encoding="utf-8", mode="a"),
     ],
 )
 logger = logging.getLogger(__name__)
@@ -100,93 +99,6 @@ def rebuild_db(uploaded_files, sheet_configs=None):
         st.error("抱歉，数据库重建时发生错误，请稍后重试或联系支持。")
         logger.error(f"Rebuild failed: {traceback.format_exc()}")
 
-# Define routine dashboard queries (customize based on your DB schema)
-dashboard_modules = {
-    "质量模块": [
-        # {"query": "近一个月的光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近一个月光模块故障"},
-        # {"query": "近一个月的网络设备故障率，按厂商、型号分布", "title": "近一个月网络设备故障"}
-    ],
-    "容量模块": [
-        # {"query": "近两个月光模块故障数（从ROCE事件和事件监控的光模块故障表获取数据），按厂商、型号分布", "title": "近两个月光模块故障"}
-    ]
-}
-
-def render_dashboard():
-    """Render fixed dashboard with routine queries."""
-    st.header("数据仪表板")
-    for module, queries in dashboard_modules.items():
-        with st.expander(f"模块: {module}"):
-            for q in queries:
-                st.subheader(q["title"])
-                with st.spinner(f"正在运行: {q['query']}"):
-                    inputs = {
-                        "messages": [HumanMessage(content=q["query"])],
-                        "question": q["query"],
-                        "tool_history": [],
-                        "status_messages": []
-                    }
-                    config = {"configurable": {"thread_id": "dashboard"}}
-                    result = process_query(graph, inputs, config, lambda msg: st.markdown(translate_status_message(msg)))
-                    if "error" in result:
-                        st.error("抱歉，仪表板查询时发生错误，请稍后重试或联系支持。")
-                        logger.error(f"Dashboard query error: {result['error']}")
-                    else:
-                        st.markdown(result['answer'])
-                        if result["tables"]:
-                            for table in result["tables"]:
-                                st.write(f"**{table['title']}**")
-                                st.dataframe(pd.DataFrame(table["data"]), width='stretch')
-                        if result["chart_config"]:
-                            chart_id = f"chart_{uuid.uuid4().hex}"
-                            chart_json = json.dumps(result["chart_config"])
-                            # html = f"""
-                            # <html>
-                            # <head>
-                            #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                            #     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
-                            # </head>
-                            # <body>
-                            #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                            #     <script>
-                            #         document.addEventListener('DOMContentLoaded', function() {{
-                            #             try {{
-                            #                 Chart.register(ChartDataLabels); 
-                            #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
-                            #                 var myChart = new Chart(ctx, {chart_json});
-                            #             }} catch (e) {{
-                            #                 console.error('Chart.js error: ' + e.message);
-                            #             }}
-                            #         }});
-                            #     </script>
-                            # </body>
-                            # </html>
-                            # """
-                            html = f"""
-                            <html>
-                            <head>
-                                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                            </head>
-                            <body>
-                                <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                                <script>
-                                    document.addEventListener('DOMContentLoaded', function() {{
-                                        try {{
-                                            var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                            var myChart = new Chart(ctx, {chart_json});
-                                        }} catch (e) {{
-                                            console.error('Chart.js error: ' + e.message);
-                                        }}
-                                    }});
-                                </script>
-                            </body>
-                            </html>
-                            """
-                            try:
-                                components.html(html, height=450, scrolling=False)
-                            except Exception as e:
-                                st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-                                logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
 # Translate English status messages to Chinese for frontend display
 def translate_status_message(message: str) -> str:
     translations = {
@@ -216,43 +128,18 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
         logger.error(f"Streaming error: {result['error']}")
         return
 
-    # Display answer if available
-    answer = result.get("answer", "")
-    if answer:
+    if result.get("answer", ""):
         with answer_placeholder.container():
             st.markdown("**回答:**")
-            st.markdown(answer)
-        status_placeholder.empty()  # Clear tool messages
+            st.markdown(result['answer'])
+        status_placeholder.empty()
         logger.debug("Answer streamed, tool messages cleared")
 
-    # Display chart if available
     if result.get("viz_data") and result.get("viz_type") != "none":
         with chart_placeholder.container():
             st.markdown("**图表:**")
             chart_id = f"chart_{uuid.uuid4().hex}"
             chart_json = json.dumps(result["viz_data"])
-            # html = f"""
-            # <html>
-            # <head>
-            #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-            #     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
-            # </head>
-            # <body>
-            #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-            #     <script>
-            #         document.addEventListener('DOMContentLoaded', function() {{
-            #             try {{
-            #                 Chart.register(ChartDataLabels);  
-            #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
-            #                 var myChart = new Chart(ctx, {chart_json});
-            #             }} catch (e) {{
-            #                 console.error('Chart.js error: ' + e.message);
-            #             }}
-            #         }});
-            #     </script>
-            # </body>
-            # </html>
-            # """
             html = f"""
             <html>
             <head>
@@ -279,7 +166,6 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
-    # Display tables if available
     if result.get("tables"):
         with table_placeholder.container():
             st.markdown("**表格:**")
@@ -289,10 +175,9 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                 st.dataframe(df, width='stretch')
                 logger.debug(f"Table displayed: {table['title']}")
 
-    # Display processing time
     status_placeholder.markdown(f"处理时间: {result['processing_time']:.2f}秒")
 
-# # 添加简单认证（企业中替换为 OAuth/LDAP）
+# # 添加简单认证
 # def authenticate():
 #     """简单用户名/密码认证。"""
 #     if "authenticated" not in st.session_state:
@@ -301,8 +186,7 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
 #         username = st.text_input("用户名")
 #         password = st.text_input("密码", type="password")
 #         if st.button("登录"):
-#             # 企业中：检查数据库或 LDAP
-#             if username == "admin" and password == "password":  # 示例，生产中移除硬编码
+#             if username == "admin" and password == "password":
 #                 st.session_state.authenticated = True
 #                 st.rerun()
 #             else:
@@ -310,30 +194,7 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
 #                 return False
 #     return st.session_state.authenticated
 
-# def authenticate():
-#     """简单用户名/密码认证，支持多个用户。"""
-#     if "authenticated" not in st.session_state:
-#         st.session_state.authenticated = False
-#     if not st.session_state.authenticated:
-#         username = st.text_input("用户名")
-#         password = st.text_input("密码", type="password")
-#         if st.button("登录"):
-#             # 定义用户字典：{用户名: 密码}
-#             users = {
-#                 "admin": "password",      # 管理员
-#                 "user1": "pass123",       # 用户1
-#                 "user2": "secret456"      # 用户2
-#             }
-#             if username in users and users[username] == password:
-#                 st.session_state.authenticated = True
-#                 st.session_state.current_user = username  # 可选：存储当前用户用于日志
-#                 st.rerun()
-#             else:
-#                 st.error("无效凭证")
-#                 return False
-#     return st.session_state.authenticated
-
-# # 添加速率限制（每个会话每分钟限 10 查询）
+# # 添加速率限制
 # def check_rate_limit():
 #     if "last_query_time" not in st.session_state:
 #         st.session_state.last_query_time = 0
@@ -354,197 +215,157 @@ st.title("灵图SQL视图")
 # if not authenticate():
 #     st.stop()
 
-# Tabs for Chat and Dashboard
-tab1, tab2 = st.tabs(["对话", "仪表板"])
+# Sidebar for session management
+with st.sidebar:
+    st.header("聊天历史")
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = {}
+        st.session_state.first_questions = {}
+        st.session_state.chat_creation_times = {}
+        st.session_state.current_thread_id = str(uuid.uuid4())
+        st.session_state.tool_history = {}
+        st.session_state.chat_history[st.session_state.current_thread_id] = []
+        st.session_state.first_questions[st.session_state.current_thread_id] = "新建对话"
+        st.session_state.chat_creation_times[st.session_state.current_thread_id] = datetime.now()
+        st.session_state.tool_history[st.session_state.current_thread_id] = []
+        logger.info(f"Initialized first conversation: {st.session_state.current_thread_id}")
 
-with tab1:
-    # Sidebar for session management
-    with st.sidebar:
-        st.header("聊天历史")
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = {}
-            st.session_state.first_questions = {}
-            st.session_state.chat_creation_times = {}
-            st.session_state.current_thread_id = str(uuid.uuid4())
-            st.session_state.tool_history = {}
-            st.session_state.chat_history[st.session_state.current_thread_id] = []
-            st.session_state.first_questions[st.session_state.current_thread_id] = "新建对话"
-            st.session_state.chat_creation_times[st.session_state.current_thread_id] = datetime.now()
-            st.session_state.tool_history[st.session_state.current_thread_id] = []
-            logger.info(f"Initialized first conversation: {st.session_state.current_thread_id}")
+    if st.button("新建聊天 +"):
+        new_thread_id = str(uuid.uuid4())
+        st.session_state.chat_history[new_thread_id] = []
+        st.session_state.first_questions[new_thread_id] = "新建对话"
+        st.session_state.chat_creation_times[new_thread_id] = datetime.now()
+        st.session_state.tool_history[new_thread_id] = []
+        st.session_state.current_thread_id = new_thread_id
+        logger.info(f"Created new conversation: {new_thread_id}")
+        st.rerun()
 
-        # New chat button
-        if st.button("新建聊天 +"):
-            new_thread_id = str(uuid.uuid4())
-            st.session_state.chat_history[new_thread_id] = []
-            st.session_state.first_questions[new_thread_id] = "新建对话"
-            st.session_state.chat_creation_times[new_thread_id] = datetime.now()
-            st.session_state.tool_history[new_thread_id] = []
-            st.session_state.current_thread_id = new_thread_id
-            logger.info(f"Created new conversation: {new_thread_id}")
-            st.rerun()
+    now = datetime.now()
+    groups = {
+        "今天": [],
+        "昨天": [],
+        "过去7天": [],
+        "过去30天": [],
+        "更早": []
+    }
 
-        # Group chats by time range
-        now = datetime.now()
-        groups = {
-            "今天": [],
-            "昨天": [],
-            "过去7天": [],
-            "过去30天": [],
-            "更早": []
-        }
+    for thread_id, creation_time in sorted(st.session_state.chat_creation_times.items(), key=lambda x: x[1], reverse=True):
+        delta = now - creation_time
+        if delta < timedelta(days=1):
+            groups["今天"].append((thread_id, creation_time))
+        elif delta < timedelta(days=2):
+            groups["昨天"].append((thread_id, creation_time))
+        elif delta < timedelta(days=7):
+            groups["过去7天"].append((thread_id, creation_time))
+        elif delta < timedelta(days=30):
+            groups["过去30天"].append((thread_id, creation_time))
+        else:
+            groups["更早"].append((thread_id, creation_time))
 
-        for thread_id, creation_time in sorted(st.session_state.chat_creation_times.items(), key=lambda x: x[1], reverse=True):
-            delta = now - creation_time
-            if delta < timedelta(days=1):
-                groups["今天"].append((thread_id, creation_time))
-            elif delta < timedelta(days=2):
-                groups["昨天"].append((thread_id, creation_time))
-            elif delta < timedelta(days=7):
-                groups["过去7天"].append((thread_id, creation_time))
-            elif delta < timedelta(days=30):
-                groups["过去30天"].append((thread_id, creation_time))
-            else:
-                groups["更早"].append((thread_id, creation_time))
+    for group_name, threads in groups.items():
+        if threads:
+            st.subheader(group_name)
+            for thread_id, creation_time in threads:
+                label = st.session_state.first_questions.get(thread_id, "未知")
+                if st.button(f"{label} - {creation_time.strftime('%Y-%m-%d %H:%M')}", key=thread_id):
+                    st.session_state.current_thread_id = thread_id
+                    logger.info(f"Switched to conversation: {thread_id}")
+                    st.rerun()
 
-        # Display grouped history
-        for group_name, threads in groups.items():
-            if threads:
-                st.subheader(group_name)
-                for thread_id, creation_time in threads:
-                    label = st.session_state.first_questions.get(thread_id, "未知")
-                    if st.button(f"{label} - {creation_time.strftime('%Y-%m-%d %H:%M')}", key=thread_id):
-                        st.session_state.current_thread_id = thread_id
-                        logger.info(f"Switched to conversation: {thread_id}")
-                        st.rerun()
-
-    # Chat interface
-    chat_container = st.container()
-    with chat_container:
-        st.header("灵图SQL对话")
-        
-        # Display chat history for current thread
-        for message in st.session_state.chat_history[st.session_state.current_thread_id]:
-            if isinstance(message, (HumanMessage, AIMessage)):
-                role = "user" if isinstance(message, HumanMessage) else "assistant"
-                with st.chat_message(role):
-                    st.markdown(message.content)
-                    if isinstance(message, AIMessage) and hasattr(message, "tables"):
-                        for table in message.tables:
-                            st.markdown(f"**{table['title']}**")
-                            st.dataframe(pd.DataFrame(table["data"]), width='stretch')
-                    if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                        chart_id = f"chart_{uuid.uuid4().hex}"
-                        chart_json = json.dumps(message.chart_config)
-                        # html = f"""
-                        # <html>
-                        # <head>
-                        #     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                        #     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script> 
-                        # </head>
-                        # <body>
-                        #     <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                        #     <script>
-                        #         document.addEventListener('DOMContentLoaded', function() {{
-                        #             try {{
-                        #                 Chart.register(ChartDataLabels);  
-                        #                 var ctx = document.getElementById('{chart_id}').getContext('2d');
-                        #                 var myChart = new Chart(ctx, {chart_json});
-                        #             }} catch (e) {{
-                        #                 console.error('Chart.js error: ' + e.message);
-                        #             }}
-                        #         }});
-                        #     </script>
-                        # </body>
-                        # </html>
-                        # """
-                        html = f"""
-                        <html>
-                        <head>
-                            <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                        </head>
-                        <body>
-                            <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                            <script>
-                                document.addEventListener('DOMContentLoaded', function() {{
-                                    try {{
-                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                        var myChart = new Chart(ctx, {chart_json});
-                                    }} catch (e) {{
-                                        console.error('Chart.js error: ' + e.message);
-                                    }}
-                                }});
-                            </script>
-                        </body>
-                        </html>
-                        """
-                        try:
-                            components.html(html, height=450, scrolling=False)
-                        except Exception as e:
-                            st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-                            logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
-    # Chat input and processing
-    prompt = st.chat_input("输入您的查询 (例如: '哪个国家的客户消费最多？')")
-    if prompt:
-        if not check_rate_limit():
-            st.stop()
-        # 修改：使用 st.query_params 替换 st.experimental_get_query_params
-        user_ip = st.query_params.get("user_ip", "unknown")
-        logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
-        # Update first question for new sessions
-        if not st.session_state.chat_history[st.session_state.current_thread_id]:
-            st.session_state.first_questions[st.session_state.current_thread_id] = prompt[:50] + "..." if len(prompt) > 50 else prompt
-        
-        user_message = HumanMessage(content=prompt)
-        st.session_state.chat_history[st.session_state.current_thread_id].append(user_message)
-        with chat_container:
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            with st.chat_message("assistant"):
-                status_placeholder = st.empty()
-                answer_placeholder = st.empty()
-                chart_placeholder = st.empty()
-                table_placeholder = st.empty()
-                status_placeholder.markdown("开始查询处理...")
-                with st.spinner("处理中..."):
+# Chat interface
+chat_container = st.container()
+with chat_container:
+    st.header("灵图SQL对话")
+    
+    for message in st.session_state.chat_history[st.session_state.current_thread_id]:
+        if isinstance(message, (HumanMessage, AIMessage)):
+            role = "user" if isinstance(message, HumanMessage) else "assistant"
+            with st.chat_message(role):
+                st.markdown(message.content)
+                if isinstance(message, AIMessage) and hasattr(message, "tables"):
+                    for table in message.tables:
+                        st.markdown(f"**{table['title']}**")
+                        st.dataframe(pd.DataFrame(table["data"]), width='stretch')
+                if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
+                    chart_id = f"chart_{uuid.uuid4().hex}"
+                    chart_json = json.dumps(message.chart_config)
+                    html = f"""
+                    <html>
+                    <head>
+                        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                    </head>
+                    <body>
+                        <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {{
+                                try {{
+                                    var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                    var myChart = new Chart(ctx, {chart_json});
+                                }} catch (e) {{
+                                    console.error('Chart.js error: ' + e.message);
+                                }}
+                            }});
+                        </script>
+                    </body>
+                    </html>
+                    """
                     try:
-                        # Filter context for follow-up questions
-                        filtered_messages = [
-                            msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
-                            if isinstance(msg, (HumanMessage, AIMessage)) and not (isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls)
-                        ]
-                        inputs = {
-                            "messages": filtered_messages + [user_message],
-                            "question": prompt,
-                            "tool_history": st.session_state.tool_history.get(st.session_state.current_thread_id, []),
-                            "status_messages": []
-                        }
-                        config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
-                        # Pass callback to update status messages in real-time
-                        result = process_query(graph, inputs, config, lambda msg: status_placeholder.markdown(translate_status_message(msg)))
-                        stream_response(result, status_placeholder, answer_placeholder, chart_placeholder, table_placeholder)
-                        # Update chat history with final message
-                        assistant_message = AIMessage(content=result['answer'])
-                        if result["tables"]:
-                            assistant_message.tables = result["tables"]
-                        if result["viz_data"]:
-                            assistant_message.chart_config = result["viz_data"]
-                        st.session_state.chat_history[st.session_state.current_thread_id] = result["messages"] + [assistant_message]
-                        # Update tool history
-                        st.session_state.tool_history[st.session_state.current_thread_id] = [
-                            h for h in result.get("tool_history", [])
-                            if h["tool"] in ["sql_db_list_tables", "sql_db_schema", "sql_db_query", "sql_db_query_checker", "check_result"]
-                        ]
+                        components.html(html, height=450, scrolling=False)
                     except Exception as e:
-                        status_placeholder.error("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                        logger.error(f"Query failed for IP {user_ip}: {traceback.format_exc()}")
-                        assistant_message = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                        st.session_state.chat_history[st.session_state.current_thread_id].append(assistant_message)
+                        st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
+                        logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
-with tab2:
-    render_dashboard()
+prompt = st.chat_input("输入您的查询 (例如: '哪个国家的客户消费最多？')")
+if prompt:
+    if not check_rate_limit():
+        st.stop()
+    user_ip = st.query_params.get("user_ip", "unknown")
+    logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
+    if not st.session_state.chat_history[st.session_state.current_thread_id]:
+        st.session_state.first_questions[st.session_state.current_thread_id] = prompt[:50] + "..." if len(prompt) > 50 else prompt
+    
+    user_message = HumanMessage(content=prompt)
+    st.session_state.chat_history[st.session_state.current_thread_id].append(user_message)
+    with chat_container:
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant"):
+            status_placeholder = st.empty()
+            answer_placeholder = st.empty()
+            chart_placeholder = st.empty()
+            table_placeholder = st.empty()
+            status_placeholder.markdown("开始查询处理...")
+            with st.spinner("处理中..."):
+                try:
+                    filtered_messages = [
+                        msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
+                        if isinstance(msg, (HumanMessage, AIMessage)) and not (isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls)
+                    ]
+                    inputs = {
+                        "messages": filtered_messages + [user_message],
+                        "question": prompt,
+                        "tool_history": st.session_state.tool_history.get(st.session_state.current_thread_id, []),
+                        "status_messages": []
+                    }
+                    config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
+                    result = process_query(graph, inputs, config, lambda msg: status_placeholder.markdown(translate_status_message(msg)))
+                    stream_response(result, status_placeholder, answer_placeholder, chart_placeholder, table_placeholder)
+                    assistant_message = AIMessage(content=result['answer'])
+                    if result["tables"]:
+                        assistant_message.tables = result["tables"]
+                    if result["viz_data"]:
+                        assistant_message.chart_config = result["viz_data"]
+                    st.session_state.chat_history[st.session_state.current_thread_id] = result["messages"] + [assistant_message]
+                    st.session_state.tool_history[st.session_state.current_thread_id] = [
+                        h for h in result.get("tool_history", [])
+                        if h["tool"] in ["sql_db_list_tables", "sql_db_schema", "sql_db_query", "sql_db_query_checker", "check_result"]
+                    ]
+                except Exception as e:
+                    status_placeholder.error("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
+                    logger.error(f"Query failed for IP {user_ip}: {traceback.format_exc()}")
+                    assistant_message = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
+                    st.session_state.chat_history[st.session_state.current_thread_id].append(assistant_message)
 
 if prompt and prompt.lower() in ["exit", "quit"]:
     st.write("退出程序。")
