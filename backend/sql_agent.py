@@ -10,6 +10,7 @@ import json
 import time
 import ast
 import re
+import sqlite3
 from typing import Annotated, List, Dict, Callable
 from typing_extensions import TypedDict
 from langchain_openai import ChatOpenAI
@@ -21,7 +22,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver  # SqliteSaver for concurrent support
 from dotenv import load_dotenv
 import logging
 import uuid
@@ -29,6 +30,7 @@ import traceback
 from pydantic import BaseModel, Field
 from backend.utils.viz_utils import choose_viz_type, format_data_for_viz, format_tables, build_chart_config
 import pandas as pd
+
 
 # Configure logging
 logging.getLogger().handlers = []
@@ -54,6 +56,9 @@ if not QWEN_API_KEY:
 QWEN_API_URL = os.getenv("QWEN_API_URL", "http://100.94.4.96:8000/v1")
 QWEN_MODEL = os.getenv("QWEN_MODEL", "Qwen3-Coder-480B")
 TEMPERATURE = float(os.getenv("QWEN_TEMPERATURE", 0.2))
+
+# 检查点数据库路径（独立于主DB）
+CHECKPOINT_DB_PATH = "checkpoints.db"
 
 class State(TypedDict):
     """State definition for the LangGraph workflow, aligned with State.py."""
@@ -387,7 +392,9 @@ def build_graph(db: SQLDatabase, status_callback: Callable[[str], None] = None) 
     """Builds the LangGraph workflow with checkpointing, accepting status_callback."""
     try:
         tools = initialize_tools(db)
-        checkpointer = MemorySaver()
+        # 修改：使用 SqliteSaver 支持并发
+        conn = sqlite3.connect(CHECKPOINT_DB_PATH, check_same_thread=False)  # 允许多线程
+        checkpointer = SqliteSaver(conn)
         workflow = StateGraph(State)
         workflow.add_node("agent", lambda state: agent_node(state, tools, status_callback))
         workflow.add_node("tools", lambda state: tool_node(state, tools, status_callback))
@@ -397,7 +404,7 @@ def build_graph(db: SQLDatabase, status_callback: Callable[[str], None] = None) 
         workflow.add_edge("tools", "agent")
         workflow.add_edge("viz", END)
         compiled_graph = workflow.compile(checkpointer=checkpointer)
-        logger.info("LangGraph workflow built successfully")
+        logger.info("LangGraph workflow built successfully with SqliteSaver")
         return compiled_graph, tools
     except Exception as e:
         logger.error(f"Failed to build graph: {traceback.format_exc()}")
@@ -408,6 +415,9 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_callback: 
     try:
         start_time = time.time()
         inputs = filter_context(inputs)  # Filter context for follow-up questions
+        # 添加日志：记录 thread_id 以审计并发
+        thread_id = config.get("configurable", {}).get("thread_id", "unknown")
+        logger.info(f"Processing query for thread_id: {thread_id}")
         response = graph.invoke(inputs, config)
         processing_time = time.time() - start_time
         logger.debug(f"Graph response: {response}")
@@ -450,7 +460,7 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_callback: 
             "tool_history": response.get("tool_history", [])
         }
     except Exception as e:
-        logger.error(f"Query processing failed: {traceback.format_exc()}")
+        logger.error(f"Query processing failed for thread_id {thread_id}: {traceback.format_exc()}")
         return {
             "answer": "抱歉，处理查询时发生错误，请稍后重试或联系支持。",
             "viz_type": "none",

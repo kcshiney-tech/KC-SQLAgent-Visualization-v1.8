@@ -275,6 +275,7 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             Ensure data structure compatibility (e.g., categorical + numeric for bar/pie, two numerics for scatter).
             Output JSON: {{"viz_type": "chosen_type"}}."""
         )
+        
         chain = prompt | llm
         sample_result = json.dumps(sql_result[:3])
         logger.debug(f"Choosing viz type - Question: {question}, History: {history}, Tool History: {tool_history}, Sample Result: {sample_result}")
@@ -356,15 +357,15 @@ def format_tables(sql_result: List[Dict], question: str, history: str = "", tool
             - Tool history: '{tool_history}'
             - SQL results: {results}
             Format the data into a list of tables, each with a title and data:
-            {{
+            {
                 "title": "string",
-                "data": {{ "column_name": "value" }}[]
-            }}
+                "data": { "column_name": "value" }[]
+            }
             - Provide a meaningful table title based on the question.
             - Use human-readable column names, derived from the question and data (e.g., '型号', '故障次数', '占比').
             - Replace NULL/empty values with 'Unknown'.
             - If grouping is logical (e.g., by category), create multiple tables.
-            Output ONLY the JSON object: [{{"title": "string", "data": {{ "column_name": "value" }}[]}}]"""
+            Output ONLY the JSON object: [{"title": "string", "data": { "column_name": "value" }[]}]"""
         )
         chain = prompt | llm
         max_retries = 2

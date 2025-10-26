@@ -248,8 +248,44 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
     # Display processing time
     status_placeholder.markdown(f"处理时间: {result['processing_time']:.2f}秒")
 
+# 添加简单认证（企业中替换为 OAuth/LDAP）
+def authenticate():
+    """简单用户名/密码认证。"""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    if not st.session_state.authenticated:
+        username = st.text_input("用户名")
+        password = st.text_input("密码", type="password")
+        if st.button("登录"):
+            # 企业中：检查数据库或 LDAP
+            if username == "admin" and password == "password":  # 示例，生产中移除硬编码
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("无效凭证")
+                return False
+    return st.session_state.authenticated
+
+# 添加速率限制（每个会话每分钟限 10 查询）
+def check_rate_limit():
+    if "last_query_time" not in st.session_state:
+        st.session_state.last_query_time = 0
+        st.session_state.query_count = 0
+    now = time.time()
+    if now - st.session_state.last_query_time > 60:
+        st.session_state.query_count = 0
+        st.session_state.last_query_time = now
+    if st.session_state.query_count >= 10:
+        st.error("查询速率超过限制，请稍后重试。")
+        return False
+    st.session_state.query_count += 1
+    return True
+
 # Streamlit UI
 st.title("灵图SQL视图")
+
+if not authenticate():
+    st.stop()
 
 # Tabs for Chat and Dashboard
 tab1, tab2 = st.tabs(["对话", "仪表板"])
@@ -362,6 +398,11 @@ with tab1:
     # Chat input and processing
     prompt = st.chat_input("输入您的查询 (例如: '哪个国家的客户消费最多？')")
     if prompt:
+        if not check_rate_limit():
+            st.stop()
+        # 修改：使用 st.query_params 替换 st.experimental_get_query_params
+        user_ip = st.query_params.get("user_ip", "unknown")
+        logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
         # Update first question for new sessions
         if not st.session_state.chat_history[st.session_state.current_thread_id]:
             st.session_state.first_questions[st.session_state.current_thread_id] = prompt[:50] + "..." if len(prompt) > 50 else prompt
@@ -409,7 +450,7 @@ with tab1:
                         ]
                     except Exception as e:
                         status_placeholder.error("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                        logger.error(f"Query failed: {traceback.format_exc()}")
+                        logger.error(f"Query failed for IP {user_ip}: {traceback.format_exc()}")
                         assistant_message = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
                         st.session_state.chat_history[st.session_state.current_thread_id].append(assistant_message)
 
