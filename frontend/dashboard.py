@@ -7,7 +7,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import os
 import sys
-import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import uuid
 import pandas as pd
@@ -21,6 +20,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage
 import re  # 用于提取KPI数字
+import time  # 用于时间检查
 
 # Configure logging
 logging.basicConfig(
@@ -136,8 +136,13 @@ def render_table(result):
                 df = pd.DataFrame(table["data"])
                 st.dataframe(df, use_container_width=True, hide_index=True)
 
-def extract_kpi(answer):
-    """Extract KPI value from answer (e.g., first number)."""
+def extract_kpi(answer, kpi_label):
+    """Extract KPI value from answer with better matching."""
+    # 改进匹配：搜索如 "总故障数: 123" 或第一个数字
+    pattern = rf"{kpi_label}\s*[:：]?\s*(\d+)"
+    match = re.search(pattern, answer, re.IGNORECASE)
+    if match:
+        return match.group(1)
     match = re.search(r'\d+', answer)
     return match.group(0) if match else "N/A"
 
@@ -149,8 +154,8 @@ def render_dashboard_card(query_info, result):
         # KPI + Summary columns
         col1, col2 = st.columns([1, 3])
         with col1:
-            kpi_value = extract_kpi(result.get("answer", ""))
-            st.metric(label=query_info["kpi"], value=kpi_value)
+            kpi_value = extract_kpi(result.get("answer", ""), query_info["kpi"])
+            st.metric(label=query_info["kpi"], value=kpi_value, help=f"从分析中提取的{query_info['kpi']}（如果不准确，请检查数据源）")
         with col2:
             render_summary(result.get("answer", ""))
         
@@ -160,12 +165,12 @@ def render_dashboard_card(query_info, result):
         # Table (collapsible)
         render_table(result)
         
-        # Refresh button for single card
+        # Refresh button for single card (no rerun, update state)
         if st.button(f"🔄 刷新 {query_info['title']}", key=f"refresh_{query_info['title']}"):
-            # 重新运行单个查询
-            new_result = process_dashboard_query(query_info, graph, f"dashboard_{uuid.uuid4().hex}")
-            st.session_state.dashboard_data[query_info['title']] = new_result  # 更新session_state
-            st.rerun()  # 刷新页面显示新数据
+            with st.spinner(f"刷新 {query_info['title']}..."):
+                new_result = process_dashboard_query(query_info, graph, f"dashboard_{uuid.uuid4().hex}")
+                st.session_state.dashboard_data[query_info['title']] = new_result
+            st.success(f"{query_info['title']} 已刷新！")
 
 # # 添加简单认证
 # def authenticate():
@@ -193,13 +198,13 @@ st.markdown("**实时监控关键指标，支持交互过滤和刷新。**")
 # if not authenticate():
 #     st.stop()
 
-# 全局过滤器
-col1, col2, col3 = st.columns(3)
-with col1:
+# 侧边栏：模块分页选择
+with st.sidebar:
+    st.header("导航")
+    selected_module = st.radio("选择模块", list(get_dashboard_queries().keys()) + ["所有模块"], index=0)
+    
+    st.header("全局设置")
     date_range = st.selectbox("时间范围", ["近一个月", "近两个月", "近三个月", "自定义"])
-with col2:
-    module_filter = st.multiselect("选择模块", list(get_dashboard_queries().keys()), default=list(get_dashboard_queries().keys()))
-with col3:
     if st.button("🔄 刷新全部", type="primary"):
         st.session_state.dashboard_data = {}  # 清空缓存
         st.rerun()
@@ -211,8 +216,9 @@ if "dashboard_data" not in st.session_state:
 
 with st.spinner("加载仪表板数据..."):
     all_queries = []
-    for module, queries in dashboard_queries.items():
-        for query_info in queries:
+    modules_to_load = [selected_module] if selected_module != "所有模块" else list(dashboard_queries.keys())
+    for module in modules_to_load:
+        for query_info in dashboard_queries[module]:
             title = query_info["title"]
             if title not in st.session_state.dashboard_data or time.time() - st.session_state.dashboard_data[title].get("last_refresh", 0) > query_info["refresh_interval"]:
                 all_queries.append((query_info, f"dashboard_{uuid.uuid4().hex}"))
@@ -231,13 +237,15 @@ with st.spinner("加载仪表板数据..."):
                 completed += 1
                 progress_bar.progress(completed / len(all_queries))
 
-# 渲染卡片网格
-for module_name in module_filter:
+# 渲染卡片网格（根据侧边栏分页）
+for module_name in modules_to_load:
     if module_name in dashboard_queries:
         st.markdown(f"## {module_name}")
-        for query_info in dashboard_queries[module_name]:
-            result = st.session_state.dashboard_data.get(query_info["title"], {"result": {"error": "加载中..."}})
-            render_dashboard_card(query_info, result["result"])
+        cols = st.columns(min(len(dashboard_queries[module_name]), 3))  # 最多3列
+        for i, query_info in enumerate(dashboard_queries[module_name]):
+            with cols[i]:
+                result = st.session_state.dashboard_data.get(query_info["title"], {"result": {"error": "加载中..."}})
+                render_dashboard_card(query_info, result["result"])
 
 # 页脚
 st.markdown("---")
