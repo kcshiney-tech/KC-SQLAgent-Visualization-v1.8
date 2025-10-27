@@ -144,16 +144,38 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
             <html>
             <head>
                 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
             </head>
             <body>
                 <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
                 <script>
                     document.addEventListener('DOMContentLoaded', function() {{
                         try {{
+                            // Check if plugin is loaded and register it
+                            if (window.Chart && window.HierarchicalPlugin) {{
+                                Chart.register(window.HierarchicalPlugin);
+                                console.log('Hierarchical plugin registered successfully');
+                            }} else if (window.Chart) {{
+                                console.log('Chart.js loaded, assuming plugin auto-registers scales');
+                            }} else {{
+                                throw new Error('Chart.js or HierarchicalPlugin not loaded');
+                            }}
                             var ctx = document.getElementById('{chart_id}').getContext('2d');
                             var myChart = new Chart(ctx, {chart_json});
+                            console.log('Hierarchical chart initialized successfully');
                         }} catch (e) {{
                             console.error('Chart.js error: ' + e.message);
+                            // Fallback: Render as standard bar chart without hierarchy
+                            if (e.message.includes('hierarchical')) {{
+                                var fallbackConfig = JSON.parse({chart_json});
+                                fallbackConfig.options.scales.x.type = 'category';
+                                fallbackConfig.options.scales.x.hierarchical = undefined;
+                                fallbackConfig.options.scales.x.separator = undefined;
+                                fallbackConfig.options.scales.x.levelPadding = undefined;
+                                var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                var myChart = new Chart(ctx, fallbackConfig);
+                                console.log('Fallback standard bar chart rendered');
+                            }}
                         }}
                     }});
                 </script>
@@ -165,6 +187,39 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
             except Exception as e:
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
+
+    # if result.get("viz_data") and result.get("viz_type") != "none":
+    #     with chart_placeholder.container():
+    #         st.markdown("**图表:**")
+    #         chart_id = f"chart_{uuid.uuid4().hex}"
+    #         chart_json = json.dumps(result["viz_data"])
+    #         html = f"""
+    #         <html>
+    #         <head>
+    #             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    #             <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@3.0.0/dist/chartjs-plugin-hierarchical.min.js"></script>
+    #         </head>
+    #         <body>
+    #             <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+    #             <script>
+    #                 document.addEventListener('DOMContentLoaded', function() {{
+    #                     try {{
+    #                         Chart.register(window['chartjs-plugin-hierarchical'].HierarchicalScale);
+    #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
+    #                         var myChart = new Chart(ctx, {chart_json});
+    #                     }} catch (e) {{
+    #                         console.error('Chart.js error: ' + e.message);
+    #                     }}
+    #                 }});
+    #             </script>
+    #         </body>
+    #         </html>
+    #         """
+    #         try:
+    #             components.html(html, height=450, scrolling=False)
+    #         except Exception as e:
+    #             st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
+    #             logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
     if result.get("tables"):
         with table_placeholder.container():
@@ -294,16 +349,38 @@ with chat_container:
                     <html>
                     <head>
                         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
                     </head>
                     <body>
                         <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
                         <script>
                             document.addEventListener('DOMContentLoaded', function() {{
                                 try {{
+                                    // Check if plugin is loaded and register it
+                                    if (window.Chart && window.HierarchicalPlugin) {{
+                                        Chart.register(window.HierarchicalPlugin);
+                                        console.log('Hierarchical plugin registered successfully');
+                                    }} else if (window.Chart) {{
+                                        console.log('Chart.js loaded, assuming plugin auto-registers scales');
+                                    }} else {{
+                                        throw new Error('Chart.js or HierarchicalPlugin not loaded');
+                                    }}
                                     var ctx = document.getElementById('{chart_id}').getContext('2d');
                                     var myChart = new Chart(ctx, {chart_json});
+                                    console.log('Hierarchical chart initialized successfully');
                                 }} catch (e) {{
                                     console.error('Chart.js error: ' + e.message);
+                                    // Fallback: Render as standard bar chart without hierarchy
+                                    if (e.message.includes('hierarchical')) {{
+                                        var fallbackConfig = JSON.parse({chart_json});
+                                        fallbackConfig.options.scales.x.type = 'category';
+                                        fallbackConfig.options.scales.x.hierarchical = undefined;
+                                        fallbackConfig.options.scales.x.separator = undefined;
+                                        fallbackConfig.options.scales.x.levelPadding = undefined;
+                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                        var myChart = new Chart(ctx, fallbackConfig);
+                                        console.log('Fallback standard bar chart rendered');
+                                    }}
                                 }}
                             }});
                         </script>
@@ -315,6 +392,37 @@ with chat_container:
                     except Exception as e:
                         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
+
+                # if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
+                #     chart_id = f"chart_{uuid.uuid4().hex}"
+                #     chart_json = json.dumps(message.chart_config)
+                #     html = f"""
+                #     <html>
+                #     <head>
+                #         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                #         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@3.0.0/dist/chartjs-plugin-hierarchical.min.js"></script>
+                #     </head>
+                #     <body>
+                #         <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                #         <script>
+                #             document.addEventListener('DOMContentLoaded', function() {{
+                #                 try {{
+                #                     Chart.register(window['chartjs-plugin-hierarchical'].HierarchicalScale);
+                #                     var ctx = document.getElementById('{chart_id}').getContext('2d');
+                #                     var myChart = new Chart(ctx, {chart_json});
+                #                 }} catch (e) {{
+                #                     console.error('Chart.js error: ' + e.message);
+                #                 }}
+                #             }});
+                #         </script>
+                #     </body>
+                #     </html>
+                #     """
+                #     try:
+                #         components.html(html, height=450, scrolling=False)
+                #     except Exception as e:
+                #         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
+                #         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
 prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
 if prompt:

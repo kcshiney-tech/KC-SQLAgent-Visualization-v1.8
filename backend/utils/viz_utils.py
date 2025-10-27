@@ -193,6 +193,30 @@ Examples:
     }
   ]
 }
+''',
+    "hierarchical_bar": '''
+Where data is: {
+  title: string,
+  xLabel: string,
+  yLabel: string,
+  labels: string[],  // hierarchical labels like 'main.sub'
+  values: {data: number[], label: string}[]
+}
+Examples:
+1. data = {
+  title: "Sales by Region and City",
+  xLabel: "Location",
+  yLabel: "Sales",
+  labels: ['North.A', 'North.B', 'South.C', 'South.D'],
+  values: [{data:[10, 20, 30, 40], label: 'Q1'}]
+}
+2. data = {
+  title: "Faults by Model and Vendor",
+  xLabel: "Model.Vendor",
+  yLabel: "Count",
+  labels: ['Model1.Vendor1', 'Model1.Vendor2', 'Model2.Vendor1'],
+  values: [{data:[5, 3, 8], label: 'Date1'}, {data:[4, 6, 2], label: 'Date2'}]
+}
 '''
 }
 
@@ -256,7 +280,7 @@ def parse_llm_response(content: str) -> Dict:
 def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", tool_history: str = "") -> str:
     """Choose visualization type using LLM based on question, SQL result, and context."""
     try:
-        viz_types = ["bar", "horizontal_bar", "line", "pie", "scatter", "none"]
+        viz_types = ["bar", "horizontal_bar", "line", "pie", "scatter", "hierarchical_bar", "none"]
         prompt = ChatPromptTemplate.from_template(
             """You are a data visualization expert. Based on:
             - User question: '{question}'
@@ -274,6 +298,7 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
             - 'line': Trends over time, e.g., "Website visits over the year".
             - 'pie': Proportions, e.g., "Market share distribution" or explicit pie chart requests.
             - 'scatter': Correlations between two numeric variables, e.g., "Height vs weight".
+            - 'hierarchical_bar': Hierarchical categories on x-axis, e.g., "faults by model and vendor" or multiple grouping levels.
             - 'none': Single values, empty results, or no visual intent.
             Ensure data structure compatibility (e.g., categorical + numeric for bar/pie, two numerics for scatter).
             Output JSON: {{"viz_type": "chosen_type"}}."""
@@ -289,39 +314,42 @@ def choose_viz_type(question: str, sql_result: List[Dict], history: str = "", to
         if viz_type not in viz_types:
             logger.warning(f"Invalid viz_type '{viz_type}', defaulting to 'none'")
             viz_type = "none"
-        logger.info(f"Chosen viz_type: {viz_type}")
+        logger.info(f"Chose viz_type: {viz_type}")
         return viz_type
     except Exception as e:
-        logger.error(f"Failed to choose viz type: {traceback.format_exc()}")
+        logger.error(f"Viz type selection failed: {traceback.format_exc()}")
         return "none"
 
-def format_data_for_viz(viz_type: str, sql_result: List[Dict], question: str, history: str = "", tool_history: str = "") -> Dict:
-    """Format visualization data using LLM, including title and labels."""
+def format_data_for_viz(viz_type: str, sql_result: List[Dict], question: str, history: str = "", tool_history: str = "" , max_retries: int = 2) -> Dict:
+    """Format SQL results for selected viz_type using LLM."""
     try:
-        if viz_type == "none" or not sql_result:
-            logger.debug("No visualization or empty result, returning empty dict")
+        if not sql_result or viz_type == "none":
+            logger.debug("No SQL result or viz_type is none, returning empty dict")
             return {}
-        if viz_type not in graph_instructions:
-            logger.error(f"Unsupported viz type: {viz_type}")
+        instructions = graph_instructions.get(viz_type, "")
+        if not instructions:
+            logger.warning(f"No instructions for viz_type {viz_type}, returning empty")
             return {}
-        instructions = graph_instructions[viz_type]
         prompt = ChatPromptTemplate.from_template(
-            """You are a data visualization expert. Format the data for visualization based on:
+            """You are a data expert formatting SQL results for {viz_type} visualization. Based on:
             - User question: '{question}'
             - Conversation history: '{history}'
             - Tool history: '{tool_history}'
             - SQL results: {results}
-            Follow this structure and examples: {instructions}
-            Provide meaningful 'title', 'xLabel', 'yLabel' (if applicable) based on the question and data.
-            For pie charts, use the column representing percentages (e.g., '占比') for values and the categorical column (e.g., '型号') for labels.
-            Ensure numerical values are floats, handle groupings logically, and replace NULL/empty values with 'Unknown'.
-            Output ONLY the JSON object."""
+            Format the data according to these instructions:
+            {instructions}
+            - Use meaningful title, xLabel, yLabel based on the question.
+            - For hierarchical_bar, use '.' as separator in labels for levels (e.g., 'Model.Vendor').
+            - Ensure data arrays match labels length.
+            - Handle multiple series if present (e.g., by date).
+            - Replace NULL with 0 or appropriate.
+            Output ONLY the JSON object for 'data'."""
         )
         chain = prompt | llm
-        max_retries = 2
         for attempt in range(max_retries):
             try:
                 response = chain.invoke({
+                    "viz_type": viz_type,
                     "question": question,
                     "history": history,
                     "tool_history": tool_history,
@@ -408,7 +436,7 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
         colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"] * 10
         title = formatted_data.get("title", "Chart")
         config = {
-            "type": viz_type if viz_type != "horizontal_bar" else "bar",
+            "type": viz_type if viz_type != "horizontal_bar" and viz_type != "hierarchical_bar" else "bar",
             "data": {},
             "options": {
                 "responsive": True,
@@ -419,49 +447,8 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
                 }
             }
         }
-        # title = formatted_data.get("title", "Chart")
-        # config = {
-        #     "type": viz_type if viz_type != "horizontal_bar" else "bar",
-        #     "data": {},
-        #     "options": {
-        #         "responsive": True,
-        #         "maintainAspectRatio": False,
-        #         "plugins": {
-        #             "title": {"display": True, "text": title},
-        #             "legend": {"display": True},
-        #             "datalabels": {  # 新增：显示数据标签
-        #                 "display": True,
-        #                 "align": "start",  # 标签位置（center/end/start）
-        #                 "color": "black",   # 标签颜色
-        #                 "font": {"size": 12},  # 字体大小
-        #                 "formatter": "function(value, context) { return Math.round(value * 100) / 100; }"
-        #             }
-        #         }
-        #     }
-        # }
-        # config = {
-        #     "type": viz_type if viz_type != "horizontal_bar" else "bar",
-        #     "data": {},
-        #     "options": {
-        #         "responsive": True,
-        #         "maintainAspectRatio": False,
-        #         "plugins": {
-        #             "title": {"display": True, "text": title},
-        #             "legend": {"display": True},
-        #             "datalabels": {  # 新增：显示数据标签
-        #                 "display": True,
-        #                 "align": "center",  # 标签位置（center/end/start）
-        #                 "color": "black",   # 标签颜色
-        #                 "font": {"size": 12},  # 字体大小
-        #                 "formatter": function(value, context) {  # 格式化（可选，四舍五入）
-        #                     return Math.round(value * 100) / 100;
-        #                 }
-        #             }
-        #         }
-        #     }
-        # }
 
-        if viz_type in ["bar", "horizontal_bar"]:
+        if viz_type in ["bar", "horizontal_bar", "hierarchical_bar"]:
             labels = formatted_data.get("labels", [])
             values = formatted_data.get("values", [])
             datasets = [
@@ -480,6 +467,10 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
             }
             if viz_type == "horizontal_bar":
                 config["options"]["indexAxis"] = "y"
+            if viz_type == "hierarchical_bar":
+                config["options"]["scales"]["x"]["type"] = "hierarchical"
+                config["options"]["scales"]["x"]["separator"] = "."
+                config["options"]["scales"]["x"]["levelPadding"] = 10  # Optional, adjust as needed
 
         elif viz_type == "line":
             config["data"] = {
