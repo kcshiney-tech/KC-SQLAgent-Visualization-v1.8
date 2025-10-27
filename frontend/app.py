@@ -140,53 +140,167 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
             st.markdown("**图表:**")
             chart_id = f"chart_{uuid.uuid4().hex}"
             chart_json = json.dumps(result["viz_data"])
-            html = f"""
+            html = """
             <html>
-            <head>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
-            </head>
             <body>
-                <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                <script>
-                    document.addEventListener('DOMContentLoaded', function() {{
-                        try {{
-                            // Check if plugin is loaded and register it
-                            if (window.Chart && window.HierarchicalPlugin) {{
-                                Chart.register(window.HierarchicalPlugin);
-                                console.log('Hierarchical plugin registered successfully');
-                            }} else if (window.Chart) {{
-                                console.log('Chart.js loaded, assuming plugin auto-registers scales');
-                            }} else {{
-                                throw new Error('Chart.js or HierarchicalPlugin not loaded');
-                            }}
-                            var ctx = document.getElementById('{chart_id}').getContext('2d');
-                            var myChart = new Chart(ctx, {chart_json});
-                            console.log('Hierarchical chart initialized successfully');
-                        }} catch (e) {{
-                            console.error('Chart.js error: ' + e.message);
-                            // Fallback: Render as standard bar chart without hierarchy
-                            if (e.message.includes('hierarchical')) {{
-                                var fallbackConfig = JSON.parse({chart_json});
-                                fallbackConfig.options.scales.x.type = 'category';
-                                fallbackConfig.options.scales.x.hierarchical = undefined;
-                                fallbackConfig.options.scales.x.separator = undefined;
-                                fallbackConfig.options.scales.x.levelPadding = undefined;
-                                var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                var myChart = new Chart(ctx, fallbackConfig);
-                                console.log('Fallback standard bar chart rendered');
-                            }}
-                        }}
-                    }});
+                <canvas id="{chart_id}" style="width:100%; max-width:800px; height:420px;"></canvas>
+                <script type="module">
+                    // Import Chart.js ESM
+                    import { Chart } from 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/auto.js';
+                    
+                    // Import hierarchical plugin ESM
+                    import { HierarchicalScale } from 'https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/build/Chart.Hierarchical.esm.js';
+                    
+                    // Register plugin
+                    try {
+                        Chart.register(HierarchicalScale);
+                        console.log('HierarchicalScale registered successfully');
+                    } catch (regErr) {
+                        console.error('Failed to register HierarchicalScale:', regErr);
+                    }
+
+                    // Create chart
+                    document.addEventListener('DOMContentLoaded', () => {
+                        try {
+                            const canvas = document.getElementById('{chart_id}');
+                            if (!canvas) {
+                                console.error('Canvas not found: {chart_id}');
+                                return;
+                            }
+                            const ctx = canvas.getContext('2d');
+                            const config = {chart_json};
+                            
+                            // Fallback to category scale if hierarchical not registered
+                            const xScale = config.options?.scales?.x;
+                            if (xScale?.type === 'hierarchical' && !Chart.registry?.getScale('hierarchical')) {
+                                console.warn('HierarchicalScale not registered, falling back to category');
+                                xScale.type = 'category';
+                                delete xScale.hierarchical;
+                                delete xScale.separator;
+                                delete xScale.levelPadding;
+                            }
+                            
+                            const myChart = new Chart(ctx, config);
+                            console.log('Chart created successfully');
+                        } catch (e) {
+                            console.error('Chart creation error:', e);
+                        }
+                    });
                 </script>
             </body>
             </html>
-            """
+            """.format(chart_id=chart_id, chart_json=chart_json)
             try:
-                components.html(html, height=450, scrolling=False)
+                components.html(html, height=480, scrolling=False)
             except Exception as e:
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
+
+            # html = """
+            #         <html>
+            #         <head>
+            #             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+            #             <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
+            #         </head>
+            #         <body>
+            #             <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+            #             <script>
+            #                 document.addEventListener('DOMContentLoaded', function() {{
+            #                     try {{
+            #                         // 尝试以多种方式找到并注册 hierarchical 插件（不同版本/UMD 可能暴露不同名字）
+            #                         function registerHierarchicalPlugin() {{
+            #                             if (!window.Chart) throw new Error('Chart.js not loaded');
+
+            #                             // 列出可能的全局名（常见 UMD 暴露）
+            #                             const candidates = [
+            #                                 window.HierarchicalPlugin,
+            #                                 window.HierarchicalScale,
+            #                                 window['chartjs-plugin-hierarchical'],
+            #                                 window['chartjsPluginHierarchical'],
+            #                                 window['chartjs-plugin-hierarchical-v4'],
+            #                                 window['ChartjsPluginHierarchical'],
+            #                                 (window['chartjs-plugin-hierarchical'] && window['chartjs-plugin-hierarchical'].default),
+            #                                 (window['chartjsPluginHierarchical'] && window['chartjsPluginHierarchical'].default)
+            #                             ];
+
+            #                             const plugins = Array.from(new Set(candidates.filter(p => p)));
+
+            #                             if (plugins.length === 0) {{
+            #                                 if (window.HierarchicalScale) {{
+            #                                     Chart.register(window.HierarchicalScale);
+            #                                     console.log('Registered HierarchicalScale from window.HierarchicalScale');
+            #                                     return true;
+            #                                 }}
+            #                                 console.warn('No hierarchical plugin found on window. Candidates checked:', candidates);
+            #                                 return false;
+            #                             }}
+
+            #                             for (const p of plugins) {{
+            #                                 try {{
+            #                                     if (p.HierarchicalScale) {{
+            #                                         Chart.register(p.HierarchicalScale);
+            #                                         console.log('Registered plugin.HierarchicalScale');
+            #                                         return true;
+            #                                     }}
+            #                                     Chart.register(p);
+            #                                     console.log('Registered hierarchical plugin (generic)');
+            #                                     return true;
+            #                                 }} catch (regErr) {{
+            #                                     console.warn('Failed to register candidate plugin, trying next. Error:', regErr);
+            #                                     continue;
+            #                                 }}
+            #                             }}
+
+            #                             console.warn('Tried to register hierarchical plugin but all attempts failed.');
+            #                             return false;
+            #                         }}
+
+            #                         if (!window.Chart) {{
+            #                             throw new Error('Chart.js not available on window');
+            #                         }}
+            #                         const registered = registerHierarchicalPlugin();
+            #                         if (!registered) {{
+            #                             console.warn('Hierarchical plugin not registered — falling back to normal category axis if necessary.');
+            #                         }} else {{
+            #                             console.log('Hierarchical plugin registered successfully');
+            #                         }}
+
+            #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
+            #                         var config = {chart_json};
+            #                         try {{
+            #                             if (config.options && config.options.scales && config.options.scales.x && config.options.scales.x.type === 'hierarchical') {{
+            #                                 if (!registered) {{
+            #                                     console.warn('Config requests hierarchical scale but plugin not registered — switching to category.');
+            #                                     config.options.scales.x.type = 'category';
+            #                                 }}
+            #                             }}
+            #                         }} catch(e) {{
+            #                             console.warn('Error checking config hierarchical type:', e);
+            #                         }}
+            #                         var myChart = new Chart(ctx, config);
+            #                         console.log('Hierarchical chart initialized (or fallback if plugin unavailable)');
+            #                     }} catch (e) {{
+            #                         console.error('Chart.js error: ' + (e && e.message ? e.message : e));
+            #                         try {{
+            #                             var fallbackConfig = JSON.parse({chart_json});
+            #                             if (fallbackConfig.options && fallbackConfig.options.scales && fallbackConfig.options.scales.x) {{
+            #                                 fallbackConfig.options.scales.x.type = 'category';
+            #                                 if (fallbackConfig.options.scales.x.hierarchical) delete fallbackConfig.options.scales.x.hierarchical;
+            #                                 if (fallbackConfig.options.scales.x.separator) delete fallbackConfig.options.scales.x.separator;
+            #                                 if (fallbackConfig.options.scales.x.levelPadding) delete fallbackConfig.options.scales.x.levelPadding;
+            #                             }}
+            #                             var ctx = document.getElementById('{chart_id}').getContext('2d');
+            #                             var myChart = new Chart(ctx, fallbackConfig);
+            #                             console.log('Fallback standard bar chart rendered');
+            #                         }} catch (fe) {{
+            #                             console.error('Fallback render failed: ' + fe);
+            #                         }}
+            #                     }}
+            #                 }});
+            #             </script>
+            #         </body>
+            #         </html>
+            #         """.format(chart_id=chart_id, chart_json=chart_json)
 
     # if result.get("viz_data") and result.get("viz_type") != "none":
     #     with chart_placeholder.container():
@@ -342,56 +456,181 @@ with chat_container:
                     for table in message.tables:
                         st.markdown(f"**{table['title']}**")
                         st.dataframe(pd.DataFrame(table["data"]), width='stretch')
+                
                 if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
                     chart_id = f"chart_{uuid.uuid4().hex}"
                     chart_json = json.dumps(message.chart_config)
-                    html = f"""
+                    html = """
                     <html>
-                    <head>
-                        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
-                    </head>
                     <body>
-                        <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                        <script>
-                            document.addEventListener('DOMContentLoaded', function() {{
-                                try {{
-                                    // Check if plugin is loaded and register it
-                                    if (window.Chart && window.HierarchicalPlugin) {{
-                                        Chart.register(window.HierarchicalPlugin);
-                                        console.log('Hierarchical plugin registered successfully');
-                                    }} else if (window.Chart) {{
-                                        console.log('Chart.js loaded, assuming plugin auto-registers scales');
-                                    }} else {{
-                                        throw new Error('Chart.js or HierarchicalPlugin not loaded');
-                                    }}
-                                    var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                    var myChart = new Chart(ctx, {chart_json});
-                                    console.log('Hierarchical chart initialized successfully');
-                                }} catch (e) {{
-                                    console.error('Chart.js error: ' + e.message);
-                                    // Fallback: Render as standard bar chart without hierarchy
-                                    if (e.message.includes('hierarchical')) {{
-                                        var fallbackConfig = JSON.parse({chart_json});
-                                        fallbackConfig.options.scales.x.type = 'category';
-                                        fallbackConfig.options.scales.x.hierarchical = undefined;
-                                        fallbackConfig.options.scales.x.separator = undefined;
-                                        fallbackConfig.options.scales.x.levelPadding = undefined;
-                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                        var myChart = new Chart(ctx, fallbackConfig);
-                                        console.log('Fallback standard bar chart rendered');
-                                    }}
-                                }}
-                            }});
+                        <canvas id="{chart_id}" style="width:100%; max-width:800px; height:420px;"></canvas>
+                        <script type="module">
+                            // Import Chart.js ESM
+                            import { Chart } from 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/auto.js';
+                            
+                            // Import hierarchical plugin ESM
+                            import { HierarchicalScale } from 'https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/build/Chart.Hierarchical.esm.js';
+                            
+                            // Register plugin
+                            try {
+                                Chart.register(HierarchicalScale);
+                                console.log('HierarchicalScale registered successfully');
+                            } catch (regErr) {
+                                console.error('Failed to register HierarchicalScale:', regErr);
+                            }
+
+                            // Create chart
+                            document.addEventListener('DOMContentLoaded', () => {
+                                try {
+                                    const canvas = document.getElementById('{chart_id}');
+                                    if (!canvas) {
+                                        console.error('Canvas not found: {chart_id}');
+                                        return;
+                                    }
+                                    const ctx = canvas.getContext('2d');
+                                    const config = {chart_json};
+                                    
+                                    // Fallback to category scale if hierarchical not registered
+                                    const xScale = config.options?.scales?.x;
+                                    if (xScale?.type === 'hierarchical' && !Chart.registry?.getScale('hierarchical')) {
+                                        console.warn('HierarchicalScale not registered, falling back to category');
+                                        xScale.type = 'category';
+                                        delete xScale.hierarchical;
+                                        delete xScale.separator;
+                                        delete xScale.levelPadding;
+                                    }
+                                    
+                                    const myChart = new Chart(ctx, config);
+                                    console.log('Chart created successfully');
+                                } catch (e) {
+                                    console.error('Chart creation error:', e);
+                                }
+                            });
                         </script>
                     </body>
                     </html>
-                    """
+                    """.format(chart_id=chart_id, chart_json=chart_json)
+
                     try:
-                        components.html(html, height=450, scrolling=False)
+                        components.html(html, height=480, scrolling=False)
                     except Exception as e:
                         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
+
+                # if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
+                #     chart_id = f"chart_{uuid.uuid4().hex}"
+                #     chart_json = json.dumps(message.chart_config)
+                #     html = """
+                #     <html>
+                #     <head>
+                #         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                #         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
+                #     </head>
+                #     <body>
+                #         <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
+                #         <script>
+                #             document.addEventListener('DOMContentLoaded', function() {{
+                #                 try {{
+                #                     // 尝试以多种方式找到并注册 hierarchical 插件（不同版本/UMD 可能暴露不同名字）
+                #                     function registerHierarchicalPlugin() {{
+                #                         if (!window.Chart) throw new Error('Chart.js not loaded');
+
+                #                         // 列出可能的全局名（常见 UMD 暴露）
+                #                         const candidates = [
+                #                             window.HierarchicalPlugin,
+                #                             window.HierarchicalScale,
+                #                             window['chartjs-plugin-hierarchical'],
+                #                             window['chartjsPluginHierarchical'],
+                #                             window['chartjs-plugin-hierarchical-v4'],
+                #                             window['ChartjsPluginHierarchical'],
+                #                             (window['chartjs-plugin-hierarchical'] && window['chartjs-plugin-hierarchical'].default),
+                #                             (window['chartjsPluginHierarchical'] && window['chartjsPluginHierarchical'].default)
+                #                         ];
+
+                #                         const plugins = Array.from(new Set(candidates.filter(p => p)));
+
+                #                         if (plugins.length === 0) {{
+                #                             if (window.HierarchicalScale) {{
+                #                                 Chart.register(window.HierarchicalScale);
+                #                                 console.log('Registered HierarchicalScale from window.HierarchicalScale');
+                #                                 return true;
+                #                             }}
+                #                             console.warn('No hierarchical plugin found on window. Candidates checked:', candidates);
+                #                             return false;
+                #                         }}
+
+                #                         for (const p of plugins) {{
+                #                             try {{
+                #                                 if (p.HierarchicalScale) {{
+                #                                     Chart.register(p.HierarchicalScale);
+                #                                     console.log('Registered plugin.HierarchicalScale');
+                #                                     return true;
+                #                                 }}
+                #                                 Chart.register(p);
+                #                                 console.log('Registered hierarchical plugin (generic)');
+                #                                 return true;
+                #                             }} catch (regErr) {{
+                #                                 console.warn('Failed to register candidate plugin, trying next. Error:', regErr);
+                #                                 continue;
+                #                             }}
+                #                         }}
+
+                #                         console.warn('Tried to register hierarchical plugin but all attempts failed.');
+                #                         return false;
+                #                     }}
+
+                #                     if (!window.Chart) {{
+                #                         throw new Error('Chart.js not available on window');
+                #                     }}
+                #                     const registered = registerHierarchicalPlugin();
+                #                     if (!registered) {{
+                #                         console.warn('Hierarchical plugin not registered — falling back to normal category axis if necessary.');
+                #                     }} else {{
+                #                         console.log('Hierarchical plugin registered successfully');
+                #                     }}
+
+                #                     var ctx = document.getElementById('{chart_id}').getContext('2d');
+                #                     var config = {chart_json};
+                #                     try {{
+                #                         if (config.options && config.options.scales && config.options.scales.x && config.options.scales.x.type === 'hierarchical') {{
+                #                             if (!registered) {{
+                #                                 console.warn('Config requests hierarchical scale but plugin not registered — switching to category.');
+                #                                 config.options.scales.x.type = 'category';
+                #                             }}
+                #                         }}
+                #                     }} catch(e) {{
+                #                         console.warn('Error checking config hierarchical type:', e);
+                #                     }}
+                #                     var myChart = new Chart(ctx, config);
+                #                     console.log('Hierarchical chart initialized (or fallback if plugin unavailable)');
+                #                 }} catch (e) {{
+                #                     console.error('Chart.js error: ' + (e && e.message ? e.message : e));
+                #                     try {{
+                #                         var fallbackConfig = JSON.parse({chart_json});
+                #                         if (fallbackConfig.options && fallbackConfig.options.scales && fallbackConfig.options.scales.x) {{
+                #                             fallbackConfig.options.scales.x.type = 'category';
+                #                             if (fallbackConfig.options.scales.x.hierarchical) delete fallbackConfig.options.scales.x.hierarchical;
+                #                             if (fallbackConfig.options.scales.x.separator) delete fallbackConfig.options.scales.x.separator;
+                #                             if (fallbackConfig.options.scales.x.levelPadding) delete fallbackConfig.options.scales.x.levelPadding;
+                #                         }}
+                #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
+                #                         var myChart = new Chart(ctx, fallbackConfig);
+                #                         console.log('Fallback standard bar chart rendered');
+                #                     }} catch (fe) {{
+                #                         console.error('Fallback render failed: ' + fe);
+                #                     }}
+                #                 }}
+                #             }});
+                #         </script>
+                #     </body>
+                #     </html>
+                #     """.format(chart_id=chart_id, chart_json=chart_json)
+
+                #     try:
+                #         components.html(html, height=450, scrolling=False)
+                #     except Exception as e:
+                #         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
+                #         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
                 # if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
                 #     chart_id = f"chart_{uuid.uuid4().hex}"
