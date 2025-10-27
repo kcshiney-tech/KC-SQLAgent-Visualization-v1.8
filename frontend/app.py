@@ -210,8 +210,9 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
 #     return True
 
 # Streamlit UI
-st.title("灵图SQL视图")
-
+# st.title("灵图SQL视图")
+st.title("🚀 灵图SQL对话")
+# st.markdown("**实时监控关键指标，支持交互过滤和刷新。**")
 # if not authenticate():
 #     st.stop()
 
@@ -275,7 +276,7 @@ with st.sidebar:
 # Chat interface
 chat_container = st.container()
 with chat_container:
-    st.header("灵图SQL对话")
+    # st.header("灵图SQL对话")
     
     for message in st.session_state.chat_history[st.session_state.current_thread_id]:
         if isinstance(message, (HumanMessage, AIMessage)):
@@ -315,10 +316,10 @@ with chat_container:
                         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
-prompt = st.chat_input("输入您的查询 (例如: '哪个国家的客户消费最多？')")
+prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
 if prompt:
-    if not check_rate_limit():
-        st.stop()
+    # if not check_rate_limit():
+    #     st.stop()
     user_ip = st.query_params.get("user_ip", "unknown")
     logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
     if not st.session_state.chat_history[st.session_state.current_thread_id]:
