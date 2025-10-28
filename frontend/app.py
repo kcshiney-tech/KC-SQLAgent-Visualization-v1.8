@@ -138,64 +138,87 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
     if result.get("viz_data") and result.get("viz_type") != "none":
         with chart_placeholder.container():
             st.markdown("**图表:**")
-            chart_id = f"chart_{uuid.uuid4().hex}"
-            chart_json = json.dumps(result["viz_data"])
-            html = """
-            <html>
-            <body>
-                <canvas id="{chart_id}" style="width:100%; max-width:800px; height:420px;"></canvas>
-                <script type="module">
-                    // Import Chart.js ESM
-                    import { Chart } from 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/auto.js';
-                    
-                    // Import hierarchical plugin ESM
-                    import { HierarchicalScale } from 'https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/build/Chart.Hierarchical.esm.js';
-                    
-                    // Register plugin
-                    try {
-                        Chart.register(HierarchicalScale);
-                        console.log('HierarchicalScale registered successfully');
-                    } catch (regErr) {
-                        console.error('Failed to register HierarchicalScale:', regErr);
-                    }
-
-                    // Create chart
-                    document.addEventListener('DOMContentLoaded', () => {
-                        try {
-                            const canvas = document.getElementById('{chart_id}');
-                            if (!canvas) {
-                                console.error('Canvas not found: {chart_id}');
-                                return;
-                            }
-                            const ctx = canvas.getContext('2d');
-                            const config = {chart_json};
-                            
-                            // Fallback to category scale if hierarchical not registered
-                            const xScale = config.options?.scales?.x;
-                            if (xScale?.type === 'hierarchical' && !Chart.registry?.getScale('hierarchical')) {
-                                console.warn('HierarchicalScale not registered, falling back to category');
-                                xScale.type = 'category';
-                                delete xScale.hierarchical;
-                                delete xScale.separator;
-                                delete xScale.levelPadding;
-                            }
-                            
-                            const myChart = new Chart(ctx, config);
-                            console.log('Chart created successfully');
-                        } catch (e) {
-                            console.error('Chart creation error:', e);
-                        }
-                    });
-                </script>
-            </body>
-            </html>
-            """.format(chart_id=chart_id, chart_json=chart_json)
             try:
-                components.html(html, height=480, scrolling=False)
+                chart_id = f"chart_{uuid.uuid4().hex}"
+                chart_json = json.dumps(result["viz_data"])
+                
+                # 使用兼容的 Chart.js 版本和正确的依赖
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
+                    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/dist/chartjs-plugin-hierarchical.umd.min.js"></script>
+                </head>
+                <body>
+                    <div style="width: 100%; height: 480px; overflow: auto;">
+                        <canvas id="{chart_id}"></canvas>
+                    </div>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {{
+                            try {{
+                                // 注册层级插件
+                                if (window.ChartHierarchicalScale) {{
+                                    Chart.register(window.ChartHierarchicalScale.HierarchicalScale);
+                                    console.log('HierarchicalScale registered successfully');
+                                }} else {{
+                                    console.warn('HierarchicalScale not available, falling back to category');
+                                }}
+
+                                var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                var config = {chart_json};
+                                
+                                // 确保配置正确
+                                var xScale = config.options?.scales?.x;
+                                if (xScale && xScale.type === 'hierarchical') {{
+                                    if (!Chart.registry.getScale('hierarchical')) {{
+                                        console.warn('Hierarchical scale not available, using category');
+                                        xScale.type = 'category';
+                                        delete xScale.hierarchical;
+                                    }} else {{
+                                        xScale.hierarchical = xScale.hierarchical || {{
+                                            separator: '.',
+                                            levelPadding: 15,
+                                            offset: true,
+                                            collapse: false
+                                        }};
+                                    }}
+                                }}
+                                
+                                // 移除可能导致问题的 zoom 插件配置（如果未引入）
+                                if (config.options?.plugins?.zoom && !window.ChartZoom) {{
+                                    delete config.options.plugins.zoom;
+                                }}
+                                
+                                var myChart = new Chart(ctx, config);
+                                console.log('Chart created successfully');
+                            }} catch (e) {{
+                                console.error('Chart creation error:', e);
+                                // 备用方案：使用普通柱状图
+                                try {{
+                                    var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                    var config = {chart_json};
+                                    config.type = 'bar';
+                                    if (config.options?.scales?.x) {{
+                                        config.options.scales.x.type = 'category';
+                                        delete config.options.scales.x.hierarchical;
+                                    }}
+                                    var myChart = new Chart(ctx, config);
+                                    console.log('Fallback chart created');
+                                }} catch (fallbackError) {{
+                                    console.error('Fallback also failed:', fallbackError);
+                                }}
+                            }}
+                        }});
+                    </script>
+                </body>
+                </html>
+                """
+                components.html(html, height=500, scrolling=False)
             except Exception as e:
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
             # html = """
             #         <html>
             #         <head>
@@ -460,56 +483,78 @@ with chat_container:
                 if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
                     chart_id = f"chart_{uuid.uuid4().hex}"
                     chart_json = json.dumps(message.chart_config)
-                    html = """
+                    html = f"""
+                    <!DOCTYPE html>
                     <html>
+                    <head>
+                        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/dist/chartjs-plugin-hierarchical.umd.min.js"></script>
+                    </head>
                     <body>
-                        <canvas id="{chart_id}" style="width:100%; max-width:800px; height:420px;"></canvas>
-                        <script type="module">
-                            // Import Chart.js ESM
-                            import { Chart } from 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/auto/auto.js';
-                            
-                            // Import hierarchical plugin ESM
-                            import { HierarchicalScale } from 'https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/build/Chart.Hierarchical.esm.js';
-                            
-                            // Register plugin
-                            try {
-                                Chart.register(HierarchicalScale);
-                                console.log('HierarchicalScale registered successfully');
-                            } catch (regErr) {
-                                console.error('Failed to register HierarchicalScale:', regErr);
-                            }
+                        <div style="width: 100%; height: 480px; overflow: auto;">
+                            <canvas id="{chart_id}"></canvas>
+                        </div>
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {{
+                                try {{
+                                    // 注册层级插件
+                                    if (window.ChartHierarchicalScale) {{
+                                        Chart.register(window.ChartHierarchicalScale.HierarchicalScale);
+                                        console.log('HierarchicalScale registered successfully');
+                                    }} else {{
+                                        console.warn('HierarchicalScale not available, falling back to category');
+                                    }}
 
-                            // Create chart
-                            document.addEventListener('DOMContentLoaded', () => {
-                                try {
-                                    const canvas = document.getElementById('{chart_id}');
-                                    if (!canvas) {
-                                        console.error('Canvas not found: {chart_id}');
-                                        return;
-                                    }
-                                    const ctx = canvas.getContext('2d');
-                                    const config = {chart_json};
+                                    var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                    var config = {chart_json};
                                     
-                                    // Fallback to category scale if hierarchical not registered
-                                    const xScale = config.options?.scales?.x;
-                                    if (xScale?.type === 'hierarchical' && !Chart.registry?.getScale('hierarchical')) {
-                                        console.warn('HierarchicalScale not registered, falling back to category');
-                                        xScale.type = 'category';
-                                        delete xScale.hierarchical;
-                                        delete xScale.separator;
-                                        delete xScale.levelPadding;
-                                    }
+                                    // 确保配置正确
+                                    var xScale = config.options?.scales?.x;
+                                    if (xScale && xScale.type === 'hierarchical') {{
+                                        if (!Chart.registry.getScale('hierarchical')) {{
+                                            console.warn('Hierarchical scale not available, using category');
+                                            xScale.type = 'category';
+                                            delete xScale.hierarchical;
+                                        }} else {{
+                                            xScale.hierarchical = xScale.hierarchical || {{
+                                                separator: '.',
+                                                levelPadding: 15,
+                                                offset: true,
+                                                collapse: false
+                                            }};
+                                        }}
+                                    }}
                                     
-                                    const myChart = new Chart(ctx, config);
+                                    // 移除可能导致问题的 zoom 插件配置（如果未引入）
+                                    if (config.options?.plugins?.zoom && !window.ChartZoom) {{
+                                        delete config.options.plugins.zoom;
+                                    }}
+                                    
+                                    var myChart = new Chart(ctx, config);
                                     console.log('Chart created successfully');
-                                } catch (e) {
+                                }} catch (e) {{
                                     console.error('Chart creation error:', e);
-                                }
-                            });
+                                    // 备用方案：使用普通柱状图
+                                    try {{
+                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
+                                        var config = {chart_json};
+                                        config.type = 'bar';
+                                        if (config.options?.scales?.x) {{
+                                            config.options.scales.x.type = 'category';
+                                            delete config.options.scales.x.hierarchical;
+                                        }}
+                                        var myChart = new Chart(ctx, config);
+                                        console.log('Fallback chart created');
+                                    }} catch (fallbackError) {{
+                                        console.error('Fallback also failed:', fallbackError);
+                                    }}
+                                }}
+                            }});
                         </script>
                     </body>
                     </html>
-                    """.format(chart_id=chart_id, chart_json=chart_json)
+                    """
 
                     try:
                         components.html(html, height=480, scrolling=False)
