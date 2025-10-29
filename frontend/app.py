@@ -169,11 +169,11 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                         }
                     # html = render_hierarchical_bar(raw_viz, height=900)
                     # components.html(html, height=900, scrolling=True)
-                    html = render_hierarchical_bar(raw_viz, height=600)  # 高度 600px，清晰不占屏
+                    html = render_hierarchical_bar(raw_viz, height=700)  # 高度 600px，清晰不占屏
                     components.html(
                         html,
-                        height=600,
-                        width=1200,        # 强制宽度 1400px（可根据屏幕调）
+                        height=700,
+                        width=1400,        # 强制宽度 1400px（可根据屏幕调）
                         scrolling=False    # 关闭滚动条，图表自适应
                         # component_iframe_attrs={"style": "width: 100% !important; min-width: 2000px;"}
                     )

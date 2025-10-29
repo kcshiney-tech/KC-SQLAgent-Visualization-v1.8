@@ -7,11 +7,12 @@
 - 支持 Chart.js config 中的 raw_data
 - 可勾选图例 + 全选/取消
 - 高度自适应（900px）
+- 通用最里层标签提取：任意 .xxx 作为 series，字符升序排序，右上角筛选框
 """
 
 import json
 import uuid
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import re
 import logging
 
@@ -77,49 +78,200 @@ def _normalize_data(viz_data: Dict[str, Any]) -> Dict[str, Any]:
     return raw
 
 
-# def _detect_week_in_label(labels: List[str]) -> Tuple[bool, List[str], List[str]]:
-#     """检测 .2025-XX 或 .第XX周"""
-#     if not labels:
-#         return False, [], []
+def _detect_week_in_label(labels: List[str]) -> Tuple[bool, List[str], List[Optional[int]]]:
+    """
+    检测标签末尾是否包含“周数字”，返回：
+    - all_have_week: bool
+    - clean_labels: List[str]   # 去掉 .周 的部分
+    - week_numbers: List[Optional[int]]  # 提取的数字（无则 None）
+    """
+    patterns = [
+        r'\.(\d{4}-\d{1,2})$',           # .2025-41
+        r'\.(第\d{1,2}周)$',             # .第41周
+        r'\.(w|week|W|Week)?(\d{1,2})$', # .W41 / .week41 / .41
+    ]
+    compiled = [re.compile(p, re.IGNORECASE) for p in patterns]
 
-#     # 支持两种格式
-#     pattern1 = re.compile(r'\.(\d{4}-\d{1,2})$')  # .2025-41
-#     pattern2 = re.compile(r'\.(第\d{1,2}周)$')   # .第41周
+    clean_labels = []
+    week_numbers = []
 
-#     weeks = []
-#     clean_labels = []
-
-#     for lbl in labels:
-#         m1 = pattern1.search(lbl)
-#         m2 = pattern2.search(lbl)
-#         m = m1 or m2
-#         if m:
-#             week = m.group(1)
-#             clean_lbl = lbl[:m.start()]
-#             weeks.append(week)
-#             clean_labels.append(clean_lbl)
-#         else:
-#             weeks.append(None)
-#             clean_labels.append(lbl)
-
-#     all_have_week = all(w is not None for w in weeks)
-#     return all_have_week, clean_labels, weeks if all_have_week else []
-
-def _detect_week_in_label(labels: List[str]) -> tuple[bool, List[str], List[str]]:
-    """返回 (all_have_week, clean_labels, weeks)"""
-    pattern1 = re.compile(r'\.(\d{4}-\d{1,2})$')      # .2025-41
-    pattern2 = re.compile(r'\.(第\d{1,2}周)$')       # .第41周
-    weeks, clean = [], []
     for lbl in labels:
-        m = pattern1.search(lbl) or pattern2.search(lbl)
-        if m:
-            week = m.group(1)
-            clean.append(lbl[:m.start()])
-            weeks.append(week)
+        matched = False
+        for pat in compiled:
+            m = pat.search(lbl)
+            if m:
+                # 提取最后一个组的字符串
+                num_str = m.group(m.lastindex) if m.lastindex else m.group(0)
+                # 提取所有数字，取最后一个（处理 '2025-41' → '41'）
+                digits = re.findall(r'\d+', num_str)
+                week_num = int(digits[-1]) if digits else None
+                clean_labels.append(lbl[:m.start()])
+                week_numbers.append(week_num)
+                matched = True
+                break
+        if not matched:
+            clean_labels.append(lbl)
+            week_numbers.append(None)
+
+    all_have_week = all(w is not None for w in week_numbers)
+    return all_have_week, clean_labels, week_numbers
+
+
+def _extract_innermost_as_series(
+    labels: List[str], 
+    values: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    提取所有标签的 **最里层**（最后一个 . 之后的部分）作为 series
+    - 自动去重
+    - 按字符串升序排序
+    - 合并相同 clean_label 的值（取非0）
+    """
+    if not labels or '.' not in labels[0]:
+        return {
+            "is_innermost_series": False,
+            "clean_labels": labels,
+            "series_list": values
+        }
+
+    # 1. 拆分最里层
+    clean_to_orig = {}      # clean_label -> [orig_idx]
+    innermost_parts = []    # 最里层原始文本
+    clean_labels = []
+
+    for i, lbl in enumerate(labels):
+        if '.' not in lbl:
+            clean = lbl
+            inner = ""
         else:
-            clean.append(lbl)
-            weeks.append(None)
-    return all(w is not None for w in weeks), clean, weeks
+            clean, inner = lbl.rsplit('.', 1)
+        clean = clean.strip()
+        inner = inner.strip()
+
+        if clean not in clean_to_orig:
+            clean_to_orig[clean] = []
+            clean_labels.append(clean)
+        clean_to_orig[clean].append(i)
+        innermost_parts.append(inner)
+
+    # 2. 提取唯一最里层 + 按字符串升序
+    unique_innermost = sorted(set(innermost_parts), key=lambda x: x.lower())
+
+    # 3. 构建 series_data
+    n_clean = len(clean_labels)
+    n_series = len(unique_innermost)
+    series_data = [[0] * n_clean for _ in range(n_series)]
+
+    inner_to_idx = {inner: idx for idx, inner in enumerate(unique_innermost)}
+
+    # 4. 填充数据（支持多 values）
+    for v in values:
+        data = v["data"]
+        for clean, orig_indices in clean_to_orig.items():
+            c_idx = clean_labels.index(clean)
+            for orig_idx in orig_indices:
+                if orig_idx >= len(data) or data[orig_idx] == 0:
+                    continue
+                inner = innermost_parts[orig_idx]
+                if inner not in inner_to_idx:
+                    continue
+                s_idx = inner_to_idx[inner]
+                if series_data[s_idx][c_idx] == 0:  # 取第一个非0
+                    series_data[s_idx][c_idx] = data[orig_idx]
+
+    series_list = [
+        {"label": unique_innermost[i], "data": series_data[i]}
+        for i in range(n_series)
+    ]
+
+    return {
+        "is_innermost_series": True,
+        "clean_labels": clean_labels,
+        "series_list": series_list
+    }
+
+
+def dedupe_merge_first_non_zero(labels, values_per_week):
+    map_ = {}
+    uniq = []
+    week_cnt = len(values_per_week)
+    merged = [[] for _ in range(week_cnt)]
+
+    for i, lbl in enumerate(labels):
+        if lbl not in map_:
+            idx = len(uniq)
+            map_[lbl] = idx
+            uniq.append(lbl)
+            for w in range(week_cnt):
+                merged[w].append(0)
+        idx = map_[lbl]
+        for w in range(week_cnt):
+            v = values_per_week[w]["data"][i] if i < len(values_per_week[w]["data"]) else 0
+            if merged[w][idx] == 0 and v != 0:
+                merged[w][idx] = v
+
+    for w in range(week_cnt):
+        while len(merged[w]) < len(uniq):
+            merged[w].append(0)
+
+    weeks = [v["label"] for v in values_per_week]
+    return {"uniqueLabels": uniq, "merged": merged, "weeks": weeks}
+
+
+def split_rows(labels):
+    rows = [s.split('.') for s in labels]
+    max_d = max((len(r) for r in rows), default=0)
+    for r in rows:
+        r.extend([''] * (max_d - len(r)))
+    return {"rows": rows, "maxDepth": max_d}
+
+
+def hierarchical_sort(labels):
+    split = split_rows(labels)
+    rows, maxDepth = split["rows"], split["maxDepth"]
+    idx = list(range(len(labels)))
+    idx.sort(key=lambda i: tuple(rows[i]))
+    return {"indices": idx, "rows": [rows[i] for i in idx], "maxDepth": maxDepth}
+
+
+def build_hierarchy(rows):
+    def rec(level, s, e):
+        if level >= len(rows[0]):
+            return []
+        nodes = []
+        i = s
+        while i <= e:
+            val = rows[i][level]
+            j = i + 1
+            while j <= e and rows[j][level] == val:
+                j += 1
+            node = {"start": i, "end": j - 1, "label": val, "children": []}
+            node["children"] = rec(level + 1, i, j - 1)
+            nodes.append(node)
+            i = j
+        return nodes
+    return rec(0, 0, len(rows) - 1)
+
+
+def collect_groups(root, maxDepth):
+    groupsPerLevel = [[] for _ in range(maxDepth)]
+    def traverse(node, level):
+        if level < maxDepth:
+            groupsPerLevel[level].append({
+                "start": node["start"],
+                "end": node["end"],
+                "label": node["label"]
+            })
+        for child in node["children"]:
+            traverse(child, level + 1)
+    for child in root:
+        traverse(child, 0)
+    return groupsPerLevel
+
+
+def split_lines():
+    # 简化：返回空列表，实际可根据需要实现
+    return []
 
 
 def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
@@ -133,127 +285,60 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
         # ==================== 1. 数据标准化 ====================
         raw = _normalize_data(viz_data)
 
-        # ---------- 2. 周在标签里 → 多 series ----------
-        is_week_in_label, clean_labels, week_labels = _detect_week_in_label(raw["labels"])
+        # ==================== 2. 通用最里层提取（任意标签作为系列） ====================
+        extracted = _extract_innermost_as_series(raw["labels"], raw["values"])
 
-        if is_week_in_label:
-            # ① 统一周顺序（升序）
-            unique_weeks = sorted(
-                set(week_labels),
-                key=lambda x: int(re.search(r'\d+', x).group())
-            )
-            week_to_idx = {w: i for i, w in enumerate(unique_weeks)}
+        if extracted["is_innermost_series"]:
+            uniqLabels = extracted["clean_labels"]
+            merged = [s["data"] for s in extracted["series_list"]]
+            weeks = [s["label"] for s in extracted["series_list"]]  # 通用: 最里层标签
+        else:
+            # 回退: 周特定逻辑（如果最里层是周）
+            is_week_in_label, clean_labels, week_numbers = _detect_week_in_label(raw["labels"])
+            if is_week_in_label:
+                # 周升序（数字排序）
+                assert all(n is not None for n in week_numbers), "所有标签必须包含周号"
+                unique_weeks_with_num = sorted(
+                    set(zip(raw["labels"], week_numbers)),
+                    key=lambda x: x[1] if x[1] is not None else float('inf')
+                )
+                # unique_weeks_with_num = sorted(set(zip(raw["labels"], week_numbers)), key=lambda x: x[1])
+                # unique_weeks_with_num = sorted(set(zip(raw["labels"], week_numbers)), key=lambda x: x[1])
+                unique_weeks = [w for w, _ in unique_weeks_with_num]
+                week_to_idx = {w: i for i, w in enumerate(unique_weeks)}
 
-            # ② 按 clean_label 合并相同条目（取非 0）
-            clean_to_idx = {}
-            for i, cl in enumerate(clean_labels):
-                if cl not in clean_to_idx:
-                    clean_to_idx[cl] = len(clean_to_idx)
+                clean_to_idx = {}
+                for i, cl in enumerate(clean_labels):
+                    if cl not in clean_to_idx:
+                        clean_to_idx[cl] = len(clean_to_idx)
+                n_clean = len(clean_to_idx)
 
-            n_clean = len(clean_to_idx)
-            series_data = [[0] * n_clean for _ in unique_weeks]   # 每个周一个 series
+                series_data = [[0] * n_clean for _ in unique_weeks]
 
-            label_to_clean_idx = {lbl: clean_to_idx[cl] for lbl, cl in zip(raw["labels"], clean_labels)}
+                for series in raw["values"]:
+                    data = series["data"]
+                    for j, orig_lbl in enumerate(raw["labels"]):
+                        if j >= len(data) or data[j] == 0:
+                            continue
+                        clean_lbl = orig_lbl.rsplit(".", 1)[0]
+                        if clean_lbl not in clean_to_idx:
+                            continue
+                        c_idx = clean_to_idx[clean_lbl]
+                        w_idx = week_to_idx[orig_lbl]
+                        if series_data[w_idx][c_idx] == 0:
+                            series_data[w_idx][c_idx] = data[j]
 
-            # ③ 填充数值（values 可能有多 series，这里全部保留）
-            for series in raw["values"]:                 # ← 关键：遍历所有 series
-                label = series["label"]
-                data  = series["data"]
-                for orig_lbl, val in zip(raw["labels"], data):
-                    if val == 0: continue
-                    clean_lbl = orig_lbl.rsplit(".", 1)[0]
-                    if clean_lbl not in clean_to_idx: continue
-                    c_idx = clean_to_idx[clean_lbl]
-                    w_idx = week_to_idx[week_labels[raw["labels"].index(orig_lbl)]]
-                    if series_data[w_idx][c_idx] == 0:
-                        series_data[w_idx][c_idx] = val
+                uniqLabels = list(clean_to_idx.keys())
+                merged = series_data
+                weeks = unique_weeks
+            else:
+                # 无最里层: 原去重逻辑
+                deduped = dedupe_merge_first_non_zero(raw["labels"], raw["values"])
+                uniqLabels = deduped["uniqueLabels"]
+                merged = deduped["merged"]
+                weeks = deduped["weeks"]
 
-            raw["labels"] = list(clean_to_idx.keys())
-            raw["values"] = [
-                {"label": wk, "data": series_data[i]}
-                for i, wk in enumerate(unique_weeks)
-            ]
-        
-        # raw = _normalize_data(viz_data)
-        # logger.debug(f"hierarchical_chart 接收数据: title={raw['title']}, labels={len(raw['labels'])}, values={len(raw['values'])}")
-
-        # # ==================== 2. 自动检测“周在标签末尾” ====================
-        # is_week_in_label, clean_labels, week_labels = _detect_week_in_label(raw["labels"])
-        # values_per_series = raw["values"]
-
-        # if is_week_in_label:
-        #     unique_weeks = sorted(set(week_labels), key=lambda x: int(re.search(r'\d+', x).group()))
-        #     week_to_idx = {w: i for i, w in enumerate(unique_weeks)}
-        #     clean_to_final_idx = {lbl: i for i, lbl in enumerate(clean_labels)}
-
-        #     series_data = [[] for _ in unique_weeks]
-        #     orig_label_to_idx = {lbl: i for i, lbl in enumerate(raw["labels"])}
-
-        #     for clean_lbl, week in zip(clean_labels, week_labels):
-        #         final_idx = clean_to_final_idx[clean_lbl]
-        #         series_idx = week_to_idx[week]
-        #         while len(series_data[series_idx]) <= final_idx:
-        #             series_data[series_idx].append(0)
-        #         orig_lbl = f"{clean_lbl}.{week}"
-        #         orig_idx = orig_label_to_idx.get(orig_lbl)
-        #         if orig_idx is not None:
-        #             value = values_per_series[0]["data"][orig_idx]
-        #             series_data[series_idx][final_idx] = value
-
-        #     max_len = len(clean_to_final_idx)
-        #     for s in series_data:
-        #         s.extend([0] * (max_len - len(s)))
-
-        #     raw["labels"] = list(clean_to_final_idx.keys())
-        #     raw["values"] = [{"label": week, "data": series_data[i]} for i, week in enumerate(unique_weeks)]
-
-        # ==================== 3. 去重 + 合并（取非零） ====================
-        def dedupe_merge_first_non_zero(labels, values_per_week):
-            map_ = {}
-            uniq = []
-            week_cnt = len(values_per_week)
-            merged = [[] for _ in range(week_cnt)]
-
-            for i, lbl in enumerate(labels):
-                if lbl not in map_:
-                    idx = len(uniq)
-                    map_[lbl] = idx
-                    uniq.append(lbl)
-                    for w in range(week_cnt):
-                        merged[w].append(0)
-                idx = map_[lbl]
-                for w in range(week_cnt):
-                    v = values_per_week[w]["data"][i] if i < len(values_per_week[w]["data"]) else 0
-                    if merged[w][idx] == 0 and v != 0:
-                        merged[w][idx] = v
-
-            for w in range(week_cnt):
-                while len(merged[w]) < len(uniq):
-                    merged[w].append(0)
-
-            weeks = [v["label"] for v in values_per_week]
-            return {"uniqueLabels": uniq, "merged": merged, "weeks": weeks}
-
-        deduped = dedupe_merge_first_non_zero(raw["labels"], raw["values"])
-        uniqLabels = deduped["uniqueLabels"]
-        merged = deduped["merged"]
-        weeks = deduped["weeks"]
-
-        # ==================== 4. 层级拆分 + 排序 ====================
-        def split_rows(labels):
-            rows = [s.split('.') for s in labels]
-            max_d = max((len(r) for r in rows), default=0)
-            for r in rows:
-                r.extend([''] * (max_d - len(r)))
-            return {"rows": rows, "maxDepth": max_d}
-
-        def hierarchical_sort(labels):
-            split = split_rows(labels)
-            rows, maxDepth = split["rows"], split["maxDepth"]
-            idx = list(range(len(labels)))
-            idx.sort(key=lambda i: tuple(rows[i]))
-            return {"indices": idx, "rows": [rows[i] for i in idx], "maxDepth": maxDepth}
-
+        # ==================== 3. 层级排序 + 分组 ====================
         sorted_info = hierarchical_sort(uniqLabels)
         order = sorted_info["indices"]
         sortedRows = sorted_info["rows"]
@@ -262,66 +347,15 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
         uniqLabels = [uniqLabels[i] for i in order]
         sortedMerged = [[row[i] for i in order] for row in merged]
 
-        # ==================== 5. 递归分组 + 分割线 ====================
-        def build_hierarchy(rows):
-            def rec(level, s, e):
-                if level >= len(rows[0]):
-                    return []
-                nodes = []
-                i = s
-                while i <= e:
-                    val = rows[i][level]
-                    j = i + 1
-                    while j <= e and rows[j][level] == val:
-                        j += 1
-                    node = {"start": i, "end": j - 1, "label": val, "children": []}
-                    node["children"] = rec(level + 1, i, j - 1)
-                    nodes.append(node)
-                    i = j
-                return nodes
-            return rec(0, 0, len(rows) - 1) if rows else []
-
         root = build_hierarchy(sortedRows)
-
-        def collect_groups(root, depth):
-            out = [[] for _ in range(depth)]
-            def dfs(nodes, l):
-                for n in nodes:
-                    out[l].append({"start": n["start"], "end": n["end"], "label": n["label"]})
-                    if n["children"]:
-                        dfs(n["children"], l + 1)
-            dfs(root, 0)
-            return out
-
         groupsPerLevel = collect_groups(root, maxDepth)
-
-        def split_lines():
-            if not uniqLabels:
-                return []
-            arr = [None] * (len(uniqLabels) + 1)
-            arr[0] = arr[-1] = maxDepth
-            def mark(p, l):
-                if 0 <= p < len(arr) and (arr[p] is None or l < arr[p]):
-                    arr[p] = l
-            def walk(nodes, l):
-                for n in nodes:
-                    mark(n["start"], l)
-                    mark(n["end"] + 1, l)
-                    if n["children"]:
-                        walk(n["children"], l + 1)
-                    else:
-                        for p in range(n["start"], n["end"]):
-                            mark(p + 1, maxDepth)
-            walk(root, 0)
-            return arr
-
         splitAt = split_lines()
 
-        # ==================== 6. ECharts 配置 ====================
+        # ==================== 4. ECharts 配置（优化纵坐标显示） ====================
         labelFontSize = 11
         gapBetweenAxes = 30
         extraBottomPadding = 10
-        gridBase = {"left": 5, "right": 5, "top": 80, "bottom": 50}  # 右边留空间给图例面板
+        gridBase = {"left": 70, "right": 70, "top": 80, "bottom": 80}  # 加大 left/right/bottom 以显示完整 Y 轴/图例
         reserved = maxDepth * gapBetweenAxes + extraBottomPadding
         grid = {**gridBase, "bottom": gridBase["bottom"] + reserved}
 
@@ -337,13 +371,13 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
             for i in range(len(weeks))
         ]
 
-        # ==================== 7. HTML 模板（可勾选图例） ====================
+        # ==================== 5. HTML 模板 ====================
         html_template = f"""
-        <!doctype html>
-        <html lang="zh-CN">
+        <!DOCTYPE html>
+        <html>
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>{raw["title"]}</title>
           <style>
             #{chart_id} {{ width:100%; height:{height}px; }}
             .{panel_id} {{
@@ -363,7 +397,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
         <body>
           <div id="{chart_id}"></div>
           <div class="{panel_id}" id="{panel_id}">
-            <div class="title">筛选周</div>
+            <div class="title">筛选</div>
             <div id="legend-items"></div>
             <div class="buttons">
               <button id="select-all">全选</button>
