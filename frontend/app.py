@@ -26,6 +26,10 @@ from datetime import datetime, timedelta
 # ---------- 独立的多层级图表模块 ----------
 from hierarchical_chart import render_hierarchical_bar
 
+st.set_page_config(layout="wide")  # 添加此行
+# 禁用Streamlit默认的 metrics 跟踪（解决fivetran连接错误）
+# st.set_option('client.showErrorDetails', False)
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -151,25 +155,29 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                 #     # 使用独立模块渲染 ECharts 多层级图
                 #     html = render_hierarchical_bar(viz_data, height=520)
                 #     components.html(html, height=520, scrolling=True)
+                # 在 stream_response 中
                 if viz_type == "hierarchical_bar":
-                    # <<<=== 修改：优先从 viz_data["raw_data"] 提取原始数据
-                    raw_viz = viz_data.get("raw_data") or viz_data
-
-                    # 如果 raw_data 不存在（防御），从 Chart.js config 提取
-                    if "raw_data" not in viz_data and "data" in viz_data and "datasets" in viz_data["data"]:
-                        cfg = viz_data
+                    raw_viz = result["viz_data"].get("raw_data") or result["viz_data"]
+                    if "raw_data" not in result["viz_data"] and "data" in raw_viz:
+                        cfg = raw_viz
                         raw_viz = {
                             "title": cfg["options"]["plugins"]["title"]["text"],
                             "xLabel": cfg["options"]["scales"]["x"]["title"]["text"],
                             "yLabel": cfg["options"]["scales"]["y"]["title"]["text"],
                             "labels": cfg["data"]["labels"],
-                            "values": [
-                                {"label": ds["label"], "data": ds["data"]}
-                                for ds in cfg["data"]["datasets"]
-                            ]
+                            "values": [{"label": ds["label"], "data": ds["data"]} for ds in cfg["data"]["datasets"]]
                         }
-                    html = render_hierarchical_bar(viz_data, height=900)  # <<<=== 修改：高度从500/520改为800
-                    components.html(html, height=900, scrolling=True)
+                    # html = render_hierarchical_bar(raw_viz, height=900)
+                    # components.html(html, height=900, scrolling=True)
+                    html = render_hierarchical_bar(raw_viz, height=600)  # 高度 600px，清晰不占屏
+                    components.html(
+                        html,
+                        height=600,
+                        width=2000,        # 强制宽度 2000px（可根据屏幕调）
+                        scrolling=True    # 关闭滚动条，图表自适应
+                        # component_iframe_attrs={"style": "width: 100% !important; min-width: 2000px;"}
+                    )
+                    
                 else:
                     # 其他图表使用 Chart.js（保持原有逻辑）
                     chart_id = f"chart_{uuid.uuid4().hex}"
