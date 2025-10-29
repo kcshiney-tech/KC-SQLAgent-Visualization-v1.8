@@ -77,33 +77,49 @@ def _normalize_data(viz_data: Dict[str, Any]) -> Dict[str, Any]:
     return raw
 
 
-def _detect_week_in_label(labels: List[str]) -> Tuple[bool, List[str], List[str]]:
-    """检测 .2025-XX 或 .第XX周"""
-    if not labels:
-        return False, [], []
+# def _detect_week_in_label(labels: List[str]) -> Tuple[bool, List[str], List[str]]:
+#     """检测 .2025-XX 或 .第XX周"""
+#     if not labels:
+#         return False, [], []
 
-    # 支持两种格式
-    pattern1 = re.compile(r'\.(\d{4}-\d{1,2})$')  # .2025-41
-    pattern2 = re.compile(r'\.(第\d{1,2}周)$')   # .第41周
+#     # 支持两种格式
+#     pattern1 = re.compile(r'\.(\d{4}-\d{1,2})$')  # .2025-41
+#     pattern2 = re.compile(r'\.(第\d{1,2}周)$')   # .第41周
 
-    weeks = []
-    clean_labels = []
+#     weeks = []
+#     clean_labels = []
 
+#     for lbl in labels:
+#         m1 = pattern1.search(lbl)
+#         m2 = pattern2.search(lbl)
+#         m = m1 or m2
+#         if m:
+#             week = m.group(1)
+#             clean_lbl = lbl[:m.start()]
+#             weeks.append(week)
+#             clean_labels.append(clean_lbl)
+#         else:
+#             weeks.append(None)
+#             clean_labels.append(lbl)
+
+#     all_have_week = all(w is not None for w in weeks)
+#     return all_have_week, clean_labels, weeks if all_have_week else []
+
+def _detect_week_in_label(labels: List[str]) -> tuple[bool, List[str], List[str]]:
+    """返回 (all_have_week, clean_labels, weeks)"""
+    pattern1 = re.compile(r'\.(\d{4}-\d{1,2})$')      # .2025-41
+    pattern2 = re.compile(r'\.(第\d{1,2}周)$')       # .第41周
+    weeks, clean = [], []
     for lbl in labels:
-        m1 = pattern1.search(lbl)
-        m2 = pattern2.search(lbl)
-        m = m1 or m2
+        m = pattern1.search(lbl) or pattern2.search(lbl)
         if m:
             week = m.group(1)
-            clean_lbl = lbl[:m.start()]
+            clean.append(lbl[:m.start()])
             weeks.append(week)
-            clean_labels.append(clean_lbl)
         else:
+            clean.append(lbl)
             weeks.append(None)
-            clean_labels.append(lbl)
-
-    all_have_week = all(w is not None for w in weeks)
-    return all_have_week, clean_labels, weeks if all_have_week else []
+    return all(w is not None for w in weeks), clean, weeks
 
 
 def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
@@ -116,37 +132,80 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 600) -> str:
     try:
         # ==================== 1. 数据标准化 ====================
         raw = _normalize_data(viz_data)
-        logger.debug(f"hierarchical_chart 接收数据: title={raw['title']}, labels={len(raw['labels'])}, values={len(raw['values'])}")
 
-        # ==================== 2. 自动检测“周在标签末尾” ====================
+        # ---------- 2. 周在标签里 → 多 series ----------
         is_week_in_label, clean_labels, week_labels = _detect_week_in_label(raw["labels"])
-        values_per_series = raw["values"]
 
         if is_week_in_label:
-            unique_weeks = sorted(set(week_labels), key=lambda x: int(re.search(r'\d+', x).group()))
+            # ① 统一周顺序（升序）
+            unique_weeks = sorted(
+                set(week_labels),
+                key=lambda x: int(re.search(r'\d+', x).group())
+            )
             week_to_idx = {w: i for i, w in enumerate(unique_weeks)}
-            clean_to_final_idx = {lbl: i for i, lbl in enumerate(clean_labels)}
 
-            series_data = [[] for _ in unique_weeks]
-            orig_label_to_idx = {lbl: i for i, lbl in enumerate(raw["labels"])}
+            # ② 按 clean_label 合并相同条目（取非 0）
+            clean_to_idx = {}
+            for i, cl in enumerate(clean_labels):
+                if cl not in clean_to_idx:
+                    clean_to_idx[cl] = len(clean_to_idx)
 
-            for clean_lbl, week in zip(clean_labels, week_labels):
-                final_idx = clean_to_final_idx[clean_lbl]
-                series_idx = week_to_idx[week]
-                while len(series_data[series_idx]) <= final_idx:
-                    series_data[series_idx].append(0)
-                orig_lbl = f"{clean_lbl}.{week}"
-                orig_idx = orig_label_to_idx.get(orig_lbl)
-                if orig_idx is not None:
-                    value = values_per_series[0]["data"][orig_idx]
-                    series_data[series_idx][final_idx] = value
+            n_clean = len(clean_to_idx)
+            series_data = [[0] * n_clean for _ in unique_weeks]   # 每个周一个 series
 
-            max_len = len(clean_to_final_idx)
-            for s in series_data:
-                s.extend([0] * (max_len - len(s)))
+            label_to_clean_idx = {lbl: clean_to_idx[cl] for lbl, cl in zip(raw["labels"], clean_labels)}
 
-            raw["labels"] = list(clean_to_final_idx.keys())
-            raw["values"] = [{"label": week, "data": series_data[i]} for i, week in enumerate(unique_weeks)]
+            # ③ 填充数值（values 可能有多 series，这里全部保留）
+            for series in raw["values"]:                 # ← 关键：遍历所有 series
+                label = series["label"]
+                data  = series["data"]
+                for orig_lbl, val in zip(raw["labels"], data):
+                    if val == 0: continue
+                    clean_lbl = orig_lbl.rsplit(".", 1)[0]
+                    if clean_lbl not in clean_to_idx: continue
+                    c_idx = clean_to_idx[clean_lbl]
+                    w_idx = week_to_idx[week_labels[raw["labels"].index(orig_lbl)]]
+                    if series_data[w_idx][c_idx] == 0:
+                        series_data[w_idx][c_idx] = val
+
+            raw["labels"] = list(clean_to_idx.keys())
+            raw["values"] = [
+                {"label": wk, "data": series_data[i]}
+                for i, wk in enumerate(unique_weeks)
+            ]
+        
+        # raw = _normalize_data(viz_data)
+        # logger.debug(f"hierarchical_chart 接收数据: title={raw['title']}, labels={len(raw['labels'])}, values={len(raw['values'])}")
+
+        # # ==================== 2. 自动检测“周在标签末尾” ====================
+        # is_week_in_label, clean_labels, week_labels = _detect_week_in_label(raw["labels"])
+        # values_per_series = raw["values"]
+
+        # if is_week_in_label:
+        #     unique_weeks = sorted(set(week_labels), key=lambda x: int(re.search(r'\d+', x).group()))
+        #     week_to_idx = {w: i for i, w in enumerate(unique_weeks)}
+        #     clean_to_final_idx = {lbl: i for i, lbl in enumerate(clean_labels)}
+
+        #     series_data = [[] for _ in unique_weeks]
+        #     orig_label_to_idx = {lbl: i for i, lbl in enumerate(raw["labels"])}
+
+        #     for clean_lbl, week in zip(clean_labels, week_labels):
+        #         final_idx = clean_to_final_idx[clean_lbl]
+        #         series_idx = week_to_idx[week]
+        #         while len(series_data[series_idx]) <= final_idx:
+        #             series_data[series_idx].append(0)
+        #         orig_lbl = f"{clean_lbl}.{week}"
+        #         orig_idx = orig_label_to_idx.get(orig_lbl)
+        #         if orig_idx is not None:
+        #             value = values_per_series[0]["data"][orig_idx]
+        #             series_data[series_idx][final_idx] = value
+
+        #     max_len = len(clean_to_final_idx)
+        #     for s in series_data:
+        #         s.extend([0] * (max_len - len(s)))
+
+        #     raw["labels"] = list(clean_to_final_idx.keys())
+        #     raw["values"] = [{"label": week, "data": series_data[i]} for i, week in enumerate(unique_weeks)]
 
         # ==================== 3. 去重 + 合并（取非零） ====================
         def dedupe_merge_first_non_zero(labels, values_per_week):

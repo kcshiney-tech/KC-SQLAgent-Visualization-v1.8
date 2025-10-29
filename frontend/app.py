@@ -173,8 +173,8 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                     components.html(
                         html,
                         height=600,
-                        width=2000,        # 强制宽度 2000px（可根据屏幕调）
-                        scrolling=True    # 关闭滚动条，图表自适应
+                        width=1200,        # 强制宽度 1400px（可根据屏幕调）
+                        scrolling=False    # 关闭滚动条，图表自适应
                         # component_iframe_attrs={"style": "width: 100% !important; min-width: 2000px;"}
                     )
                     
