@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>多层级 X 轴（柱子可见 + 动态分割线 + 精准居中）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 12px; }
+    #main { width: 100%; height: 820px; border: 1px solid #eee; }
+    .note { margin-top:10px; color:#666; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+  <div class="note">
+    说明：柱状图正常显示 + 多层级标签 + 动态分割线 + 精准居中 + 每层背景渐变
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+(() => {
+  // ------------------ 示例数据 ------------------
+  const raw = {
+    "title": "2025年10月各周不同集群AOC故障数分布",
+    "labels": [
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT"
+    ],
+    "values": [
+      { "data": [1, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "label": "第39周" },
+      { "data": [1, 0, 0, 0, 1, 7, 1, 3, 1, 0, 0, 0, 0, 0], "label": "第40周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 1, 0, 0], "label": "第41周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], "label": "第42周" }
+    ]
+  };
+
+  // ------------------ 配置 ------------------
+  const labelFontSize = 11;
+  const gapBetweenAxes = 30;
+  const extraBottomPadding = 15;
+  const gridBase = { left: 130, right: 80, top: 80, bottom: 28 };
+
+  // ------------------ 去重合并 ------------------
+  function dedupeMergeFirstNonZero(labels, valuesPerWeek) {
+    const labelIndex = new Map();
+    const uniqueLabels = [];
+    const weekCount = valuesPerWeek.length;
+    const merged = Array.from({ length: weekCount }, () => []);
+
+    for (let i = 0; i < labels.length; i++) {
+      const lbl = labels[i];
+      let idx = labelIndex.get(lbl);
+      if (idx === undefined) {
+        idx = uniqueLabels.length;
+        uniqueLabels.push(lbl);
+        labelIndex.set(lbl, idx);
+        for (let w = 0; w < weekCount; w++) merged[w][idx] = 0;
+      }
+      for (let w = 0; w < weekCount; w++) {
+        const val = Number(valuesPerWeek[w].data[i] || 0);
+        if (merged[w][idx] === 0 && val !== 0) {
+          merged[w][idx] = val;
+        }
+      }
+    }
+    // 补零
+    for (let w = 0; w < weekCount; w++) {
+      for (let k = 0; k < uniqueLabels.length; k++) {
+        if (merged[w][k] === undefined) merged[w][k] = 0;
+      }
+    }
+    return { uniqueLabels, merged, weeks: valuesPerWeek.map(w => w.label) };
+  }
+
+  const { uniqueLabels: rawUnique, merged, weeks } = dedupeMergeFirstNonZero(raw.labels, raw.values);
+
+  // ------------------ 排序 + 分层 ------------------
+  function naturalCompare(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  function splitRows(labels) {
+    const rows = labels.map(s => s.split('.'));
+    const maxDepth = Math.max(...rows.map(r => r.length));
+    rows.forEach(r => { while (r.length < maxDepth) r.push(''); });
+    return { rows, maxDepth };
+  }
+
+  function hierarchicalSort(labels) {
+    const { rows, maxDepth } = splitRows(labels);
+    const indices = labels.map((_, i) => i);
+    indices.sort((a, b) => {
+      for (let l = 0; l < maxDepth; l++) {
+        const va = rows[a][l] || '';
+        const vb = rows[b][l] || '';
+        const cmp = naturalCompare(va, vb);
+        if (cmp !== 0) return cmp;
+      }
+      return 0;
+    });
+    return { indices, rows, maxDepth };
+  }
+
+  const sortInfo = hierarchicalSort(rawUnique);
+  const order = sortInfo.indices;
+  const uniqueLabels = order.map(i => rawUnique[i]);
+  const sortedRows = order.map(i => sortInfo.rows[i]);
+  const maxDepth = sortInfo.maxDepth;
+  const sortedMerged = merged.map(warr => order.map(i => warr[i]));
+
+  // ------------------ 构建层级结构 ------------------
+  function buildHierarchy(rows) {
+    function build(level, s, e) {
+      const nodes = [];
+      if (level >= rows[0].length) return nodes;
+      let i = s;
+      while (i <= e) {
+        const val = rows[i][level];
+        let j = i + 1;
+        while (j <= e && rows[j][level] === val) j++;
+        const node = { start: i, end: j - 1, label: val, children: [] };
+        node.children = build(level + 1, i, j - 1);
+        nodes.push(node);
+        i = j;
+      }
+      return nodes;
+    }
+    return build(0, 0, rows.length - 1);
+  }
+
+  const rootGroups = buildHierarchy(sortedRows);
+
+  function collectGroupsByLevel(nodes, depth) {
+    const out = Array.from({ length: depth }, () => []);
+    function dfs(n, lvl) {
+      for (const node of n) {
+        out[lvl].push({ start: node.start, end: node.end, label: node.label });
+        if (node.children.length) dfs(node.children, lvl + 1);
+      }
+    }
+    dfs(nodes, 0);
+    return out;
+  }
+
+  const groupsPerLevel = collectGroupsByLevel(rootGroups, maxDepth);
+
+  // ------------------ 分割线位置 ------------------
+  function getSplitLines() {
+    const splitAt = Array(uniqueLabels.length + 1).fill(null);
+    splitAt[0] = maxDepth;
+    splitAt[uniqueLabels.length] = maxDepth;
+
+    function mark(pos, level) {
+      if (splitAt[pos] === null || level < splitAt[pos]) {
+        splitAt[pos] = level;
+      }
+    }
+
+    function traverse(nodes, level) {
+      for (const node of nodes) {
+        mark(node.start, level);
+        mark(node.end + 1, level);
+        if (node.children.length === 0) {
+          for (let p = node.start; p < node.end; p++) {
+            mark(p + 1, maxDepth);
+          }
+        } else {
+          traverse(node.children, level + 1);
+        }
+      }
+    }
+    traverse(rootGroups, 0);
+    return splitAt;
+  }
+
+  const splitLines = getSplitLines();
+
+  // ------------------ ECharts ------------------
+  const chart = echarts.init(document.getElementById('main'));
+
+  const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#5ab1ef'];
+  const series = weeks.map((wk, i) => ({
+    name: wk,
+    type: 'bar',
+    data: sortedMerged[i],
+    itemStyle: { color: palette[i % palette.length] },
+    barMaxWidth: 30,
+    stack: null,
+    emphasis: { focus: 'series' }
+  }));
+
+  // 关键：确保 xAxis.data 长度 === 每一周数据长度
+  const categoryData = uniqueLabels.map((_, i) => i + ''); // 必须是字符串数组，长度一致
+
+  const reservedHeight = maxDepth * gapBetweenAxes + extraBottomPadding;
+  const grid = {
+    left: gridBase.left,
+    right: gridBase.right,
+    top: gridBase.top,
+    bottom: gridBase.bottom + reservedHeight
+  };
+
+  const option = {
+    title: { text: raw.title, left: 'center' },
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params) {
+        const idx = params[0].dataIndex;
+        const label = uniqueLabels[idx];
+        let html = `<b>${label}</b><br/>`;
+        params.forEach(p => {
+          html += `${p.marker}${p.seriesName}: ${p.value}<br/>`;
+        });
+        return html;
+      }
+    },
+    legend: { top: 36 },
+    grid: grid,
+    xAxis: {
+      type: 'category',
+      data: categoryData,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false }
+    },
+    yAxis: { type: 'value', name: '故障数' },
+    series: series
+  };
+
+  chart.setOption(option);
+
+  // ------------------ 渲染图形 ------------------
+  function renderGraphics() {
+    const w = chart.getWidth(), h = chart.getHeight();
+    const { left, right, top, bottom } = grid;
+    const innerW = w - left - right;
+    const n = uniqueLabels.length;
+    const catW = n > 0 ? innerW / n : 0;
+
+    const gfx = [];
+    const bgColors = ['#f5f5f5', '#fafafa', '#fdfdfd', '#ffffff'];
+    const reservedTop = h - bottom;
+
+    // 背景 + 标签
+    for (let level = 0; level < maxDepth; level++) {
+      const groups = groupsPerLevel[level];
+      const bg = bgColors[level % bgColors.length];
+      const bandTop = reservedTop + (maxDepth - 1 - level) * gapBetweenAxes + 6;
+      const bandH = gapBetweenAxes - 8;
+
+      groups.forEach(g => {
+        if (!g.label) return;
+        const x = left + g.start * catW;
+        const width = (g.end - g.start + 1) * catW;
+
+        // 背景
+        gfx.push({
+          type: 'rect',
+          shape: { x, y: bandTop, width, height: bandH },
+          style: { fill: bg, stroke: '#e6e6e6', lineWidth: 1 },
+          z: 1, silent: true
+        });
+
+        // 文字
+        gfx.push({
+          type: 'text',
+          style: {
+            x: x + width / 2,
+            y: bandTop + bandH / 2,
+            text: g.label,
+            textAlign: 'center',
+            textVerticalAlign: 'middle',
+            fill: '#222',
+            font: `${labelFontSize}px sans-serif`
+          },
+          z: 2, silent: true
+        });
+      });
+    }
+
+    // 分割线
+    const lineTop = top - 6;
+    splitLines.forEach((level, pos) => {
+      if (level === null) return;
+      const x = left + pos * catW;
+      const lineEnd = reservedTop + (maxDepth - level) * gapBetweenAxes;
+      gfx.push({
+        type: 'line',
+        shape: { x1: x, y1: lineTop, x2: x, y2: lineEnd },
+        style: { stroke: '#ccc', lineWidth: 1 },
+        z: 3, silent: true
+      });
+    });
+
+    chart.setOption({ graphic: gfx });
+  }
+
+  renderGraphics();
+  window.addEventListener('resize', () => {
+    chart.resize();
+    setTimeout(renderGraphics, 100);
+  });
+
+  window.__debug = { uniqueLabels, sortedMerged, splitLines, chart };
+
+})();
+</script>
+</body>
+</html>

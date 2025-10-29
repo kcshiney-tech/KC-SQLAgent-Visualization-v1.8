@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>多级 X 轴 — 通用渲染（来自 JSON）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 12px; }
+    #main { width: 100%; height: 760px; border: 1px solid #eee; }
+    .note { margin-top:10px; color:#666; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+  <div class="note">说明：按 <code>.</code> 分层；此示例把 JSON 中的每个 "values" 当作一条 series（不同周）；图例可点击筛选。</div>
+
+<script>
+/* ---------- 稳健加载 ECharts ---------- */
+(function(){
+  const ECHARTS_SRC = 'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js';
+  
+
+  function loadScript(src, cb, errCb){
+    if (window.echarts) return cb();
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = cb; s.onerror = errCb;
+    document.head.appendChild(s);
+  }
+
+  loadScript(ECHARTS_SRC, init, function(){
+    document.getElementById('main').innerText = '无法加载 ECharts 脚本，请检查网络或 CDN。';
+  });
+})();
+
+/* ---------- 主逻辑（在 ECharts 可用后运行） ---------- */
+function init() {
+  // ---------- 你的 JSON 数据（直接嵌入） ----------
+  const data = {
+    "title": "2025年10月各周不同集群AOC故障数分布",
+    "xLabel": "集群.AOC型号.厂商",
+    "yLabel": "故障数",
+    "labels": [
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "SROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT"
+    ],
+    "values": [
+      { "data": [1, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "label": "第39周" },
+      { "data": [1, 0, 0, 0, 1, 7, 1, 3, 1, 0, 0, 0, 0, 0], "label": "第40周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 1, 0, 0], "label": "第41周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], "label": "第42周" }
+    ]
+  };
+
+  const rawLabels = data.labels.slice();
+  const seriesDefs = data.values; // array of {label, data[]}
+
+  // ---------- 配置项（可按需调整） ----------
+  const axisLabelFontSize = 13;
+  const gapBetweenAxes = 30;
+  const grid = { left: 110, right: 60, top: 80, bottom: 28 };
+
+  // ---------- 工具：按 '.' 分层（只按 '.'，不会拆 'ROCE'） ----------
+  function splitLayersByDot(labels){
+    const rows = labels.map(s => s.split('.'));
+    const maxDepth = Math.max(...rows.map(r=>r.length));
+    rows.forEach(r => { while (r.length < maxDepth) r.push(''); });
+    const layers = [];
+    for (let l=0;l<maxDepth;l++) layers.push(rows.map(r => r[l]));
+    return { rows, layers, maxDepth };
+  }
+
+  // ---------- 工具：找到连续相同分组（用于合并） ----------
+  function groupsFromArray(arr){
+    const groups = []; let i=0, n=arr.length;
+    while (i<n){
+      const val = arr[i];
+      let j=i+1; while (j<n && arr[j]===val) j++;
+      groups.push({ start:i, end:j-1, label: val });
+      i=j;
+    }
+    return groups;
+  }
+
+  // ---------- parse layers & groups ----------
+  const parsed = splitLayersByDot(rawLabels);
+  const rows = parsed.rows;
+  const layers = parsed.layers; // layers[0] = top level (集群)， layers[1] = next (AOC型号) ...
+  const maxDepth = parsed.maxDepth;
+  const groupsPerLevel = layers.map(l => groupsFromArray(l));
+
+  // ---------- weeks -> series colors ----------
+  const weeks = seriesDefs.map(s => s.label);
+  const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4'];
+  const weekColor = {}; weeks.forEach((w,i)=> weekColor[w] = palette[i % palette.length]);
+
+  // ---------- 构造 series（一个 week 一个 series） ----------
+  const series = seriesDefs.map((sdef, idx) => ({
+    name: sdef.label,
+    type: 'bar',
+    data: sdef.data.map(v => v === null || v === undefined ? 0 : v),
+    itemStyle: { color: weekColor[sdef.label] },
+    barMaxWidth: 30
+  }));
+
+  // ---------- 初始化 chart（单 category 轴用于位置；所有标签与 band 由 graphic 绘制，避免重复） ----------
+  const chart = echarts.init(document.getElementById('main'));
+
+  const option = {
+    title: { text: data.title, left: 'center' },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: function(params){
+        // params is array of series items for this category index
+        if (!params || !params.length) return '';
+        const idx = params[0].dataIndex;
+        const fullLabel = rawLabels[idx];
+        let html = '<div style="white-space:nowrap;"><b>' + fullLabel + '</b><br/>';
+        params.forEach(p => {
+          html += `<span style="display:inline-block;width:10px;height:10px;background:${p.color};margin-right:6px;border-radius:2px;vertical-align:middle;"></span> ${p.seriesName}: ${p.data}<br/>`;
+        });
+        html += '</div>';
+        return html;
+      }
+    },
+    legend: { top: 36, right: grid.right - 10, orient: 'vertical' },
+    grid: { left: grid.left, right: grid.right, top: grid.top, bottom: grid.bottom + maxDepth * gapBetweenAxes },
+    xAxis: [{
+      type: 'category',
+      data: rawLabels.map((_, i) => i.toString()), // invisible category indices for positioning
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false }
+    }],
+    yAxis: [{ type: 'value', name: data.yLabel }],
+    series: series,
+    graphic: []
+  };
+
+  chart.setOption(option);
+
+  // ---------- 用 graphic 绘制 bands / 居中 label / 分隔线（从上层到下层） ----------
+  function renderBands(){
+    const w = chart.getWidth(), h = chart.getHeight();
+    const left = grid.left, right = grid.right, top = grid.top, bottom = grid.bottom;
+    const innerW = w - left - right;
+    const n = rawLabels.length;
+    const catW = n > 0 ? innerW / n : innerW;
+
+    const gfx = [];
+    const levelPalettes = [
+      ['#F8FBFF','#EEF6FF','#F2FFF7','#FFF8F2'],
+      ['#FFF7EC','#FFF0F3','#F7F7FF','#F3FFF9'],
+      ['#F8F9FB','#F3F6FF','#FFF6F3','#F7FFF7'],
+      ['#F7FBFF','#FFF7FB','#F7FFF7','#FFF7EF']
+    ];
+
+    // We draw bands and centered text for each level.
+    // Top level is farthest; bottom-most level (closest to bars) we still draw band & text.
+    for (let level = 0; level < maxDepth; level++){
+      const groups = groupsPerLevel[level];
+      // Determine vertical position: topmost layer (level=0) is farthest from bars => highest bandTop
+      // We place bands below chart area within reserved bottom area: compute bandTop accordingly.
+      // compute idxFromTop: 0..maxDepth-1 (0 top)
+      const idxFromTop = level;
+      // We want bottom-most layer (idxFromTop = maxDepth-1) closest to bars => bandTop larger
+      const bandTop = h - bottom + (maxDepth - 1 - idxFromTop) * gapBetweenAxes + 6;
+      const bandHeight = gapBetweenAxes - 8;
+      const palette = levelPalettes[level % levelPalettes.length];
+      let colorIdx = 0;
+
+      groups.forEach(g => {
+        // skip empty labels (but still advance color index to keep visual variety)
+        if (!g.label) { colorIdx = (colorIdx + 1) % palette.length; return; }
+        const x = left + g.start * catW;
+        const width = (g.end - g.start + 1) * catW;
+
+        // rectangle band
+        gfx.push({
+          type: 'rect',
+          z: 1,
+          left: x,
+          top: bandTop,
+          shape: { width: width, height: bandHeight },
+          style: { fill: palette[colorIdx % palette.length], stroke: '#e6e6e6', lineWidth: 1, opacity: 1 },
+          silent: true
+        });
+
+        // centered text (group label) - avoid very long text overflow: use truncated + title
+        const displayText = g.label;
+        gfx.push({
+          type: 'text',
+          z: 2,
+          left: x + width/2,
+          top: bandTop + bandHeight/2,
+          style: {
+            text: displayText,
+            textAlign: 'center',
+            textVerticalAlign: 'middle',
+            fill: '#222',
+            font: (axisLabelFontSize) + 'px sans-serif'
+          },
+          silent: true
+        });
+
+        // vertical separators: left and right edges
+        gfx.push({
+          type: 'line',
+          z: 3,
+          shape: {
+            x1: x, y1: top - 6,
+            x2: x, y2: h - bottom + maxDepth*gapBetweenAxes + 12
+          },
+          style: { stroke: '#ddd', lineWidth: 1 }
+        });
+        gfx.push({
+          type: 'line',
+          z: 3,
+          shape: {
+            x1: x + width, y1: top - 6,
+            x2: x + width, y2: h - bottom + maxDepth*gapBetweenAxes + 12
+          },
+          style: { stroke: '#ddd', lineWidth: 1 }
+        });
+
+        colorIdx++;
+      });
+    }
+
+    chart.setOption({ graphic: gfx }, { notMerge: false, lazyUpdate: false });
+  }
+
+  // initial render bands
+  renderBands();
+
+  // on resize re-render bands
+  window.addEventListener('resize', function(){ chart.resize(); setTimeout(renderBands, 120); });
+
+  // optionally: expose chart and data for external controls
+  window.__multiLevelChart = { chart, data };
+
+  // end init
+} // end init
+</script>
+</body>
+</html>

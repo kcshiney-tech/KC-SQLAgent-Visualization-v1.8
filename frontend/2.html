@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分级横坐标柱状图</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#64748b',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .chart-container {
+                position: relative;
+                height: 70vh;
+                width: 100%;
+            }
+            .axis-container {
+                overflow-x: auto;
+                scrollbar-width: thin;
+                margin-top: -1px;
+            }
+            .axis-wrapper {
+                display: flex;
+                flex-direction: column; /* 层级从上到下：第三层 → 第二层 → 第一层 */
+            }
+            .axis-level {
+                display: flex;
+                position: relative;
+                height: 28px;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .axis-cell {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                padding: 0 4px;
+                box-sizing: border-box;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .level-1 { /* 第一层级 - 最下方（离横坐标最近） */
+                font-size: 12px;
+                font-weight: 600;
+                color: #1e293b;
+            }
+            .level-2 { /* 第二层级 - 中间 */
+                font-size: 11px;
+                color: #475569;
+            }
+            .level-3 { /* 第三层级 - 最上方（离横坐标最远） */
+                font-size: 10px;
+                color: #64748b;
+            }
+            .grid-line {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background-color: #cbd5e1;
+                z-index: 10;
+            }
+            .zoom-controls {
+                position: absolute;
+                bottom: 10px;
+                right: 10px;
+                display: flex;
+                gap: 4px;
+                z-index: 100;
+            }
+            .zoom-btn {
+                width: 28px;
+                height: 28px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+                cursor: pointer;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .zoom-btn:hover {
+                background: #f8fafc;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+    <header class="bg-white shadow-sm py-5 px-6">
+        <div class="container mx-auto">
+            <h1 class="text-xl md:text-2xl font-bold flex items-center">
+                <i class="fa fa-bar-chart text-primary mr-3"></i>
+                分级横坐标数据可视化
+            </h1>
+        </div>
+    </header>
+
+    <main class="container mx-auto py-6 px-4">
+        <div class="bg-white rounded-lg shadow-sm p-5 mb-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+                <div>
+                    <h2 class="text-lg md:text-xl font-semibold text-gray-800" id="chartTitle">数据图表</h2>
+                    <p class="text-sm text-gray-500 mt-1" id="axisLabels">X轴: 分类 | Y轴: 数值</p>
+                </div>
+                <div class="mt-4 md:mt-0 flex items-center">
+                    <label class="block text-sm font-medium text-gray-700 mb-2 md:mb-0 md:mr-2">上传数据文件 (.txt)</label>
+                    <input type="file" id="fileInput" accept=".txt" class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
+                </div>
+            </div>
+            
+            <!-- 图表容器 -->
+            <div class="chart-container relative">
+                <canvas id="dataChart"></canvas>
+                <div class="zoom-controls">
+                    <button id="zoomIn" class="zoom-btn">
+                        <i class="fa fa-search-plus text-gray-600"></i>
+                    </button>
+                    <button id="zoomOut" class="zoom-btn">
+                        <i class="fa fa-search-minus text-gray-600"></i>
+                    </button>
+                    <button id="resetView" class="zoom-btn">
+                        <i class="fa fa-refresh text-gray-600"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 分级X轴标签容器 (从上到下：第三层 → 第二层 → 第一层) -->
+            <div class="axis-container" id="axisContainer">
+                <div class="axis-wrapper" id="axisWrapper">
+                    <!-- 第三层级: 最上方（离横坐标最远） -->
+                    <div class="axis-level level-3" id="level3"></div>
+                    <!-- 第二层级: 中间 -->
+                    <div class="axis-level level-2" id="level2"></div>
+                    <!-- 第一层级: 最下方（离横坐标最近） -->
+                    <div class="axis-level level-1" id="level1"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-white border-t mt-8 py-4 px-6">
+        <div class="container mx-auto text-center text-sm text-gray-500">
+            分级数据可视化工具 &copy; 2025
+        </div>
+    </footer>
+
+    <script>
+        let chart = null;
+        let currentData = null;
+        let baseCellWidth = 90; // 基础单元格宽度
+        let zoomLevel = 1;
+        let sortedLabels = []; // 排序后的标签
+        let sortedValues = []; // 排序后的值
+        
+        // 颜色方案
+        const colors = [
+            'rgba(59, 130, 246, 0.7)',   // 蓝色 - 第39周
+            'rgba(249, 115, 22, 0.7)',  // 橙色 - 第40周
+            'rgba(16, 185, 129, 0.7)',  // 绿色 - 第41周
+            'rgba(139, 92, 246, 0.7)',  // 紫色 - 第42周
+        ];
+        
+        const borderColors = colors.map(color => color.replace('0.7', '1'));
+        
+        // 处理文件上传
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    processAndRenderData(data);
+                } catch (error) {
+                    alert('数据解析错误: ' + error.message);
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+        });
+        
+        // 处理并渲染数据（按层级排序）
+        function processAndRenderData(originalData) {
+            // 解析标签并按层级排序
+            const parsedLabels = originalData.labels.map((label, index) => {
+                const parts = label.split('.');
+                return {
+                    original: label,
+                    level1: parts[0] || '', // 第一层级: 集群 (最下方)
+                    level2: parts[1] || '', // 第二层级: 型号 (中间)
+                    level3: parts[2] || '', // 第三层级: 厂商 (最上方)
+                    originalIndex: index
+                };
+            });
+            
+            // 严格按层级排序：先按第一层级，再按第二层级，最后按第三层级
+            parsedLabels.sort((a, b) => {
+                // 先按第一层级排序（最关键的排序维度）
+                if (a.level1 !== b.level1) {
+                    return a.level1.localeCompare(b.level1);
+                }
+                
+                // 再按第二层级排序
+                if (a.level2 !== b.level2) {
+                    return a.level2.localeCompare(b.level2);
+                }
+                
+                // 最后按第三层级排序
+                return a.level3.localeCompare(b.level3);
+            });
+            
+            // 整理排序后的标签和数据
+            sortedLabels = parsedLabels.map(item => item.original);
+            
+            // 重新组织数据值以匹配排序后的标签
+            sortedValues = originalData.values.map(valueSet => {
+                const sortedData = parsedLabels.map(item => valueSet.data[item.originalIndex]);
+                return {
+                    ...valueSet,
+                    data: sortedData
+                };
+            });
+            
+            // 更新当前数据并渲染
+            currentData = {
+                ...originalData,
+                labels: sortedLabels,
+                values: sortedValues
+            };
+            
+            zoomLevel = 1;
+            renderChart(currentData);
+            renderHierarchicalXAxis(parsedLabels);
+            
+            // 更新标题
+            document.getElementById('chartTitle').textContent = originalData.title;
+            document.getElementById('axisLabels').textContent = 
+                `X轴: ${originalData.xLabel} | Y轴: ${originalData.yLabel}`;
+        }
+        
+        // 缩放控制
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            if (zoomLevel < 2) {
+                zoomLevel += 0.2;
+                updateZoom();
+            }
+        });
+        
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            if (zoomLevel > 0.5) {
+                zoomLevel -= 0.2;
+                updateZoom();
+            }
+        });
+        
+        document.getElementById('resetView').addEventListener('click', () => {
+            zoomLevel = 1;
+            updateZoom();
+        });
+        
+        function updateZoom() {
+            if (!currentData) return;
+            renderHierarchicalXAxis(sortedLabels.map(label => {
+                const parts = label.split('.');
+                return { level1: parts[0], level2: parts[1], level3: parts[2] };
+            }));
+        }
+        
+        // 渲染图表
+        function renderChart(data) {
+            const ctx = document.getElementById('dataChart').getContext('2d');
+            
+            if (chart) chart.destroy();
+            
+            const currentCellWidth = baseCellWidth * zoomLevel;
+            
+            const datasets = data.values.map((item, index) => ({
+                label: item.label,
+                data: item.data,
+                backgroundColor: colors[index % colors.length],
+                borderColor: borderColors[index % colors.length],
+                borderWidth: 1,
+                borderRadius: 2,
+                barPercentage: 0.7,
+            }));
+            
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: data.labels.map((_, i) => i),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    const index = context[0].dataIndex;
+                                    const labelParts = data.labels[index].split('.');
+                                    return `${labelParts[0]}\n${labelParts[1]}\n${labelParts[2]}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { display: false },
+                            min: 0,
+                            max: data.labels.length - 1,
+                            ticks: { stepSize: 1 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: data.yLabel },
+                            ticks: { precision: 0 }
+                        }
+                    },
+                    animation: { duration: 800 }
+                }
+            });
+        }
+        
+        // 渲染分级X轴标签（第三层级最上方，第一层级最下方）
+        function renderHierarchicalXAxis(parsedLabels) {
+            // 清空现有内容
+            ['level1', 'level2', 'level3'].forEach(level => {
+                document.getElementById(level).innerHTML = '';
+            });
+            
+            const currentCellWidth = baseCellWidth * zoomLevel;
+            const containerWidth = parsedLabels.length * currentCellWidth;
+            
+            // 为每个层级渲染合并的标签
+            renderLevel('level1', parsedLabels, currentCellWidth, containerWidth);
+            renderLevel('level2', parsedLabels, currentCellWidth, containerWidth);
+            renderLevel('level3', parsedLabels, currentCellWidth, containerWidth);
+            
+            // 同步滚动位置
+            syncScrollPosition();
+        }
+        
+        // 渲染单个层级
+        function renderLevel(levelName, parsedLabels, cellWidth, containerWidth) {
+            const container = document.getElementById(levelName);
+            container.style.width = `${containerWidth}px`;
+            
+            let currentValue = null;
+            let startIndex = 0;
+            
+            for (let i = 0; i < parsedLabels.length; i++) {
+                const value = parsedLabels[i][levelName];
+                
+                if (value !== currentValue) {
+                    if (currentValue !== null) {
+                        // 渲染上一个合并的单元格
+                        const cellCount = i - startIndex;
+                        const cell = document.createElement('div');
+                        cell.className = `axis-cell ${levelName}`;
+                        cell.style.width = `${cellCount * cellWidth}px`;
+                        cell.style.left = `${startIndex * cellWidth}px`;
+                        cell.textContent = currentValue;
+                        container.appendChild(cell);
+                        
+                        // 添加分隔线
+                        const gridLine = document.createElement('div');
+                        gridLine.className = 'grid-line';
+                        gridLine.style.left = `${startIndex * cellWidth}px`;
+                        container.appendChild(gridLine);
+                    }
+                    
+                    currentValue = value;
+                    startIndex = i;
+                }
+                
+                // 处理最后一组
+                if (i === parsedLabels.length - 1) {
+                    const cellCount = i - startIndex + 1;
+                    const cell = document.createElement('div');
+                    cell.className = `axis-cell ${levelName}`;
+                    cell.style.width = `${cellCount * cellWidth}px`;
+                    cell.style.left = `${startIndex * cellWidth}px`;
+                    cell.textContent = currentValue;
+                    container.appendChild(cell);
+                }
+            }
+        }
+        
+        // 同步滚动位置
+        function syncScrollPosition() {
+            const axisContainer = document.getElementById('axisContainer');
+            const chartCanvas = document.getElementById('dataChart').parentNode;
+            
+            // 当轴容器滚动时，保持图表与标签对齐
+            axisContainer.addEventListener('scroll', () => {
+                chartCanvas.scrollLeft = axisContainer.scrollLeft;
+            });
+        }
+        
+        // 初始化示例数据
+        document.addEventListener('DOMContentLoaded', function() {
+            const sampleData = {
+                "title": "2025年10月各周不同集群AOC故障数分布",
+                "xLabel": "集群.AOC型号.厂商",
+                "yLabel": "故障数",
+                "labels": [
+                    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+                    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+                    "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT",
+                    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+                    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+                    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+                    "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights",
+                    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+                    "SROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights",
+                    "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT",
+                    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+                    "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights",
+                    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+                    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT"
+                ],
+                "values": [
+                    { "data": [1, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "label": "第39周" },
+                    { "data": [1, 0, 0, 0, 1, 7, 1, 3, 1, 0, 0, 0, 0, 0], "label": "第40周" },
+                    { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 1, 0, 0], "label": "第41周" },
+                    { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], "label": "第42周" }
+                ]
+            };
+            
+            processAndRenderData(sampleData);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    canvas { max-width: 100%; height: 500px; }
+  </style>
+</head>
+<body>
+  <canvas id="myChart"></canvas>
+
+  <script>
+    const ctx = document.getElementById('myChart').getContext('2d');
+
+    const rawLabels = [
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-40",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-42",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-40",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights.2025-41",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-42",
+      "SROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights.2025-40"
+    ];
+
+    const dataValues = [2, 1, 1, 3, 7, 4, 1, 1, 1, 1, 2, 3, 1, 1];
+
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rawLabels,
+        datasets: [{
+          label: '故障数',
+          data: dataValues,
+          backgroundColor: 'rgba(54, 162, 235, 0.7)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: '2025年10月各集群AOC故障数按型号、厂商、周分布',
+            font: { size: 16 }
+          },
+          legend: { position: 'top' }
+        },
+        scales: {
+          x: {
+            ticks: {
+              callback: function(value) {
+                const label = this.getLabelForValue(value);
+                const parts = label.split('.');
+                // 反转顺序：最底层（周）在上，最顶层（集群）在下
+                return parts.reverse().join('\n');
+              },
+              autoSkip: false,
+              maxRotation: 0,
+              minRotation: 0,
+              font: { size: 10, lineHeight: 1.4 },
+              padding: 15,
+              align: 'center'
+            },
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: '故障数' }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

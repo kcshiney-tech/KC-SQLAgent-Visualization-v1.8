@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>ECharts 多级 X 轴 —— 倒序堆叠、合并居中、周筛选、完整 tooltip</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 12px; }
+    #container { position: relative; width: 100%; max-width: 1200px; margin: 0 auto; }
+    #main { width: 100%; height: 700px; border: 1px solid #eee; }
+    .controls {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      font-size: 13px;
+      z-index: 1000;
+      max-height: 320px;
+      overflow: auto;
+      min-width: 200px;
+    }
+    .controls h4 { margin: 0 0 6px 0; font-size: 13px; }
+    .controls label { display: block; margin: 3px 0; cursor: pointer; }
+    .controls .actions { margin-top: 6px; display:flex; gap:8px; }
+    .note { margin-top:8px; color:#666; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="main"></div>
+
+    <div class="controls" id="controls">
+      <h4>筛选显示的周 (Weeks)</h4>
+      <div id="week-checkboxes"></div>
+      <div class="actions">
+        <button id="select-all">全选</button>
+        <button id="clear-all">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    说明：按 <code>.</code> 分层（不会把 ROCE 单独拆开）。最底层为 <b>周</b>（靠近柱子），最顶层为最远层（例如 QYYDxx）。在右上角选择需要显示的周。
+  </div>
+
+<script>
+(function(){
+  // ---------------- 原始示例数据（可替换成任意同结构数据） ----------------
+  const rawLabels = [
+    "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-39",
+    "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-40",
+    "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-41",
+    "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-42",
+    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-39",
+    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-40",
+    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-41",
+    "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-42",
+    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-39",
+    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-40",
+    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-41",
+    "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-42",
+    "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-39",
+    "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-40",
+    "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-41",
+    "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-42",
+    "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-39",
+    "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-40",
+    "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-41",
+    "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-42",
+    "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights.2025-41",
+    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-39",
+    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-40",
+    "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-42",
+    "ROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights.2025-40"
+  ];
+  const rawValues = [0,0,2,0,1,1,0,0,0,3,0,0,7,0,0,0,4,1,1,1,1,2,3,1,1];
+
+  // ---------------- 公共参数（可调整） ----------------
+  const axisLabelFontSize = 13;
+  const gapBetweenAxes = 30;
+  const baseGrid = { left: 100, right: 40, top: 80, bottom: 30 };
+
+  // ---------------- 通用函数：拆分层，仅按 '.' 分割（保证 ROCE 不会被拆） ----------------
+  function splitIntoLayers(labels) {
+    const rows = labels.map(s => s.split('.'));
+    const maxDepth = Math.max(...rows.map(r => r.length));
+    rows.forEach(r => { while (r.length < maxDepth) r.push(''); });
+    const layers = [];
+    for (let l=0; l<maxDepth; l++){
+      layers.push(rows.map(r => r[l]));
+    }
+    return { rows, layers, maxDepth };
+  }
+
+  // ---------------- 通用函数：从层数组生成连续相同值的 groups ----------------
+  function groupsFromArray(arr) {
+    const groups = [];
+    let i=0, n=arr.length;
+    while (i<n) {
+      const v = arr[i];
+      let j = i+1;
+      while (j<n && arr[j] === v) j++;
+      groups.push({ start: i, end: j-1, label: v });
+      i = j;
+    }
+    return groups;
+  }
+
+  // ---------------- 计算 week 列（最后一层）并生成颜色映射 ----------------
+  function computeWeeks(rows) {
+    const weeks = rows.map(r => r[r.length - 1] || '');
+    const uniq = Array.from(new Set(weeks));
+    const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#ea7ccc','#5ab1ef'];
+    const map = {};
+    uniq.forEach((w,i) => map[w] = palette[i % palette.length]);
+    return { weeks, uniq, map };
+  }
+
+  // ---------------- render utilities (reusable) ----------------
+  const chartDom = document.getElementById('main');
+  const chart = echarts.init(chartDom);
+
+  // prepare initial parsed structure
+  let parsed = splitIntoLayers(rawLabels);
+  let { rows, layers, maxDepth } = parsed;
+  let groupsPerLevel = layers.map(level => groupsFromArray(level));
+  let weekInfo = computeWeeks(rows);
+
+  // UI：构建 week 复选框（右上角 controls）
+  const controlsRoot = document.getElementById('week-checkboxes');
+  function buildWeekCheckboxes(uniqWeeks){
+    controlsRoot.innerHTML = '';
+    uniqWeeks.forEach(w => {
+      const id = 'wk_' + w.replace(/[^a-zA-Z0-9]/g, '_');
+      const label = document.createElement('label');
+      label.innerHTML = `<input type="checkbox" checked id="${id}" value="${w}" /> ${w}`;
+      controlsRoot.appendChild(label);
+    });
+  }
+  buildWeekCheckboxes(weekInfo.uniq);
+
+  document.getElementById('select-all').addEventListener('click', function(){
+    Array.from(controlsRoot.querySelectorAll('input[type=checkbox]')).forEach(cb => cb.checked = true);
+    applyFilterAndRender();
+  });
+  document.getElementById('clear-all').addEventListener('click', function(){
+    Array.from(controlsRoot.querySelectorAll('input[type=checkbox]')).forEach(cb => cb.checked = false);
+    applyFilterAndRender();
+  });
+  // change handler
+  controlsRoot.addEventListener('change', function(){ applyFilterAndRender(); });
+
+  // ---------------- 核心：根据选中的 weeks 过滤并渲染图表（通用逻辑） ----------------
+  function applyFilterAndRender() {
+    // get selected weeks
+    const selectedWeeks = Array.from(controlsRoot.querySelectorAll('input[type=checkbox]'))
+      .filter(cb => cb.checked)
+      .map(cb => cb.value);
+
+    // build filtered arrays (indices where week in selectedWeeks)
+    const { rows: originalRows } = parsed;
+    const indices = originalRows.map((r, idx) => selectedWeeks.includes(r[r.length - 1]) ? idx : -1)
+                                .map((v,i) => v === -1 ? null : i)
+                                .filter(i => i !== null);
+
+    // if none selected: clear chart
+    if (indices.length === 0) {
+      chart.clear();
+      chart.setOption({ title: { text: '未选择任何周' } });
+      return;
+    }
+
+    // filtered arrays
+    const filteredRawLabels = indices.map(i => rawLabels[i]);
+    const filteredValues = indices.map(i => rawValues[i]);
+
+    // recompute rows/layers for filtered subset (keep same depth by padding)
+    const filteredRows = indices.map(i => rows[i].slice());
+    // pad if any shorter (shouldn't happen because original was padded)
+    filteredRows.forEach(r => { while (r.length < maxDepth) r.push(''); });
+
+    const filteredLayers = [];
+    for (let l=0; l<maxDepth; l++){
+      filteredLayers.push(filteredRows.map(r => r[l]));
+    }
+
+    const filteredGroupsPerLevel = filteredLayers.map(level => groupsFromArray(level));
+
+    // weeks for filtered subset
+    const filteredWeeks = filteredRows.map(r => r[r.length - 1] || '');
+    // colors per bar by week
+    const seriesData = filteredValues.map((v, idx) => {
+      const w = filteredWeeks[idx];
+      return {
+        value: v,
+        itemStyle: { color: weekInfo.map[w] || '#5470c6' }
+      };
+    });
+
+    // build xAxes: REVERSED stacking:
+    // bottom-most axis should be weeks (maxDepth-1), then level maxDepth-2, ..., top is level 0
+    // For axis data, bottom-most uses the week labels for each category (to be short); other axes can be empty (we will render bands).
+    const xAxes = [];
+    for (let level = maxDepth - 1; level >= 0; level--){
+      const isBottom = (level === maxDepth - 1);
+      let dataArr;
+      if (isBottom) {
+        // show week strings (short)
+        dataArr = filteredRows.map(r => r[r.length - 1] || '');
+      } else if (level === 0) {
+        // topmost: show the top-level text? keep empty to avoid cramped labels, we'll render via bands, but allow showing if desired
+        dataArr = new Array(filteredRawLabels.length).fill('');
+      } else {
+        dataArr = new Array(filteredRawLabels.length).fill('');
+      }
+
+      const idxFromBottom = (maxDepth - 1) - level; // 0 bottom
+      const offset = idxFromBottom * gapBetweenAxes;
+      xAxes.push({
+        type: 'category',
+        position: 'bottom',
+        offset: offset,
+        data: dataArr,
+        axisLine: { show: false },
+        axisTick: { show: isBottom, alignWithLabel: true, length: isBottom ? 6 : 0 },
+        axisLabel: { interval: 0, rotate: 0, show: true, color: '#222', fontSize: axisLabelFontSize, formatter: v => v },
+        splitLine: { show: false },
+        axisPointer: { show: false }
+      });
+    }
+
+    // build option skeleton
+    const option = {
+      title: { text: '2025年10月各集群AOC故障数（支持多级 x 轴）', left: 'center' },
+      grid: {
+        left: baseGrid.left, right: baseGrid.right, top: baseGrid.top,
+        bottom: baseGrid.bottom + maxDepth * gapBetweenAxes
+      },
+      tooltip: {
+        trigger: 'item',
+        formatter: function(params){
+          if (!params) return '';
+          const idx = params.dataIndex;
+          // show full original label from filteredRawLabels
+          const label = filteredRawLabels[idx];
+          const val = (params.value && params.value.value !== undefined) ? params.value.value : params.value;
+          return `${label}<br/>故障数: <b>${val}</b>`;
+        }
+      },
+      xAxis: xAxes,
+      yAxis: { type: 'value', name: '故障数', nameLocation: 'end', nameGap: 18 },
+      series: [{
+        name: '故障数',
+        type: 'bar',
+        data: seriesData,
+        xAxisIndex: 0, // bottom-most axis in our constructed array is at index 0 (we pushed bottom first)
+        barMaxWidth: 28
+      }],
+      graphic: [] // fill later
+    };
+
+    chart.setOption(option, { notMerge: true, lazyUpdate: false });
+
+    // draw background bands and separators for all levels EXCEPT bottom (week)
+    // note: our x-axis order in option has bottom-most first (index 0), topmost last
+    // we operate with filteredLayers where index 0..maxDepth-1 correspond to original order (top..bottom)
+    // for drawing we need groups for each level except bottom (i.e., level indices 0..maxDepth-2)
+    const w = chart.getWidth(), h = chart.getHeight();
+    const left = baseGrid.left, right = baseGrid.right, top = baseGrid.top, bottom = baseGrid.bottom;
+    const innerW = w - left - right;
+    const n = filteredRawLabels.length;
+    const catW = n > 0 ? innerW / n : innerW;
+
+    const gfx = [];
+    const bandPalettes = [
+      ['#F8FBFF','#EEF6FF','#F2FFF7','#FFF8F2'],
+      ['#FFF7EC','#FFF0F3','#F7F7FF','#F3FFF9'],
+      ['#F8F9FB','#F3F6FF','#FFF6F3','#F7FFF7'],
+      ['#F7FBFF','#FFF7FB','#F7FFF7','#FFF7EF']
+    ];
+
+    // For level indices 0..maxDepth-2 (top..one above bottom)
+    for (let level = 0; level <= maxDepth-2; level++){
+      // get groups computed on filteredLayers[level]
+      const levelArr = filteredLayers[level];
+      const groups = groupsFromArray(levelArr);
+
+      // band vertical position: place bands stacked above the bottom area; bottom-most axis offset = 0; we aligned axes earlier
+      // compute bandTop: start from chart bottom - bottom grid padding, then add offset for level (level 0 topmost has largest offset)
+      // Simpler: position bands in the area reserved below the chart (we set grid.bottom large enough)
+      const idxFromBottom = (maxDepth - 1) - level; // 1..maxDepth-? ; bottom-most weeks -> idxFromBottom 0
+      const bandTop = h - bottom + (idxFromBottom - 1) * gapBetweenAxes + 6; // -1 because we skip bottom-most bands
+      const bandHeight = gapBetweenAxes - 8;
+
+      let colorIdx = 0;
+      const palette = bandPalettes[level % bandPalettes.length];
+
+      groups.forEach(g => {
+        if (!g.label) {
+          colorIdx = (colorIdx + 1) % palette.length;
+          return;
+        }
+        const x = left + (g.start) * catW;
+        const width = (g.end - g.start + 1) * catW;
+        // rect band
+        gfx.push({
+          type: 'rect', z: 1,
+          left: x, top: bandTop,
+          shape: { width: width, height: bandHeight },
+          style: { fill: palette[colorIdx % palette.length], stroke: '#e6e6e6', lineWidth: 1, opacity: 1 },
+          silent: true
+        });
+        // centered text
+        gfx.push({
+          type: 'text', z: 2,
+          left: x + width/2, top: bandTop + bandHeight/2,
+          style: {
+            text: g.label,
+            textAlign: 'center',
+            textVerticalAlign: 'middle',
+            fill: '#333',
+            font: (axisLabelFontSize + 1) + 'px sans-serif'
+          },
+          silent: true
+        });
+        // vertical separator lines (draw left edge and right edge)
+        gfx.push({
+          type: 'line', z: 3,
+          shape: {
+            x1: x, y1: top - 6,
+            x2: x, y2: h - bottom + maxDepth * gapBetweenAxes + 12
+          },
+          style: { stroke: '#dcdcdc', lineWidth: 1 }
+        });
+        gfx.push({
+          type: 'line', z: 3,
+          shape: {
+            x1: x + width, y1: top - 6,
+            x2: x + width, y2: h - bottom + maxDepth * gapBetweenAxes + 12
+          },
+          style: { stroke: '#dcdcdc', lineWidth: 1 }
+        });
+
+        colorIdx++;
+      });
+    }
+
+    // also draw vertical separators at bottom groups (level 0 groups)
+    const bottomGroups = groupsFromArray(filteredLayers[0]);
+    bottomGroups.forEach(g => {
+      const x = left + g.start * catW;
+      gfx.push({
+        type: 'line', z: 3,
+        shape: {
+          x1: x, y1: top - 6,
+          x2: x, y2: h - bottom + maxDepth * gapBetweenAxes + 12
+        },
+        style: { stroke: '#cfcfcf', lineWidth: 1 }
+      });
+    });
+
+    chart.setOption({ graphic: gfx }, { notMerge: false, lazyUpdate: false });
+  }
+
+  // initial render (all weeks selected)
+  applyFilterAndRender();
+
+  // resize handler
+  window.addEventListener('resize', function(){ chart.resize(); setTimeout(() => applyFilterAndRender(), 120); });
+
+  // ---------------- Streamlit 迁移提示 ----------------
+  // 这个 HTML 是可直接嵌入到 Streamlit 的 components.html 中：
+  // st.components.v1.html(open("echarts-multilevel-advanced.html").read(), height=800)
+  // 你可以把 rawLabels/rawValues 替换成后端返回的 JSON，然后用 JS 接口重新调用 applyFilterAndRender()
+  // 或在 streamlit 里通过设置 <script> 发送 postMessage 更新数据（可扩展）。
+})();
+</script>
+</body>
+</html>

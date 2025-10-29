@@ -305,6 +305,7 @@ def tool_node(state: State, tools: List, status_callback: Callable[[str], None] 
             "status_messages": state["status_messages"] + ["Error in tool execution."]
         }
 
+
 def viz_node(state: State, status_callback: Callable[[str], None] = None) -> Dict:
     """Visualization node: Chooses viz type, formats data and tables with LLM, and builds chart config."""
     try:

@@ -382,23 +382,7 @@ def format_tables(sql_result: List[Dict], question: str, history: str = "", tool
         if not sql_result:
             logger.debug("No SQL result for table formatting, returning empty list")
             return []
-        # prompt = ChatPromptTemplate.from_template(
-        #     """You are a data expert formatting SQL results into tables. Based on:
-        #     - User question: '{question}'
-        #     - Conversation history: '{history}'
-        #     - Tool history: '{tool_history}'
-        #     - SQL results: {results}
-        #     Format the data into a list of tables, each with a title and data:
-        #     {
-        #         "title": "string",
-        #         "data": { "column_name": "value" }[]
-        #     }
-        #     - Provide a meaningful table title based on the question.
-        #     - Use human-readable column names, derived from the question and data (e.g., '型号', '故障次数', '占比').
-        #     - Replace NULL/empty values with 'Unknown'.
-        #     - If grouping is logical (e.g., by category), create multiple tables.
-        #     Output ONLY the JSON object: [{"title": "string", "data": { "column_name": "value" }[]}]"""
-        # )
+       
         prompt = ChatPromptTemplate.from_template(
         """You are a data expert formatting SQL results into tables. Based on:
         - User question: '{question}'
@@ -503,14 +487,14 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
             
             # 只有确认层级插件可用时才使用层级坐标轴
             if viz_type == "hierarchical_bar":
-                scales_config["x"]["type"] = "hierarchical"
-                scales_config["x"]["hierarchical"] = {
-                    "separator": ".",
-                    "levelPadding": 20,
-                    "offset": True,
-                    "collapse": False
-                }
-            
+                scales_config["x"]["type"] = "category"
+                scales_config["x"]["_hierarchical"] = {
+                "separator": formatted_data.get("hierarchical_separator", "."),
+                "levelPadding": formatted_data.get("hierarchical_levelPadding", 20),
+                "offset": formatted_data.get("hierarchical_offset", True),
+                "collapse": formatted_data.get("hierarchical_collapse", False)
+    }
+
             if viz_type == "horizontal_bar":
                 config["options"]["indexAxis"] = "y"
                 # 交换 x 和 y 轴的配置
@@ -518,84 +502,6 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
             
             config["options"]["scales"] = scales_config
 
-    
-    # try:
-    #     if not formatted_data or viz_type == "none":
-    #         logger.debug("No formatted data or viz_type is none, returning empty config")
-    #         return {}
-    #     colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"] * 10
-    #     title = formatted_data.get("title", "Chart")
-    #     config = {
-    #         "type": viz_type if viz_type != "horizontal_bar" and viz_type != "hierarchical_bar" else "bar",
-    #         "data": {},
-    #         "options": {
-    #             "responsive": True,
-    #             "maintainAspectRatio": False,
-    #             "plugins": {
-    #                 "title": {"display": True, "text": title},
-    #                 "legend": {"display": True}
-    #             }
-    #         }
-    #     }
-
-
-        # if viz_type in ["bar", "horizontal_bar", "hierarchical_bar"]:
-        #     labels = formatted_data.get("labels", [])
-        #     values = formatted_data.get("values", [])
-        #     datasets = [
-        #         {
-        #             "label": v["label"],
-        #             "data": [float(x) if x is not None else 0.0 for x in v["data"]],
-        #             "backgroundColor": colors[i % len(colors)],
-        #             "borderColor": colors[i % len(colors)],
-        #             "borderWidth": 1,
-        #             # 对层次类目保守设置 parsing:false，Chart 不会误解析数据字段
-        #             "parsing": False
-        #         } for i, v in enumerate(values)
-        #     ]
-        #     config["data"] = {"labels": labels, "datasets": datasets}
-        #     # 统一设置 scales，层次相关配置放到 hierarchical 对象中
-        #     config["options"]["scales"] = {
-        #         "x": {
-        #             "title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")},
-        #             # 指定 scale 类型为 hierarchical（plugin 需要）
-        #             "type": "hierarchical"
-        #         },
-        #         "y": {"beginAtZero": True, "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
-        #     }
-        #     if viz_type == "horizontal_bar":
-        #         config["options"]["indexAxis"] = "y"
-        #     if viz_type == "hierarchical_bar":
-        #         # 把 hierarchical 的可选配置集中成对象，插件通常读取 options.scales[x].hierarchical
-        #         if viz_type == "hierarchical_bar":
-        #             config["options"]["scales"]["x"]["hierarchical"] = {
-        #                 "separator": formatted_data.get("separator", "."),  # 确认分隔符
-        #                 "levelPadding": formatted_data.get("levelPadding", 10),
-        #                 "offset": True  # 可选，增加层级间距
-        #             }
-        # if viz_type in ["bar", "horizontal_bar", "hierarchical_bar"]:
-        #     labels = formatted_data.get("labels", [])
-        #     values = formatted_data.get("values", [])
-        #     datasets = [
-        #         {
-        #             "label": v["label"],
-        #             "data": [float(x) if x is not None else 0.0 for x in v["data"]],
-        #             "backgroundColor": colors[i % len(colors)],
-        #             "borderColor": colors[i % len(colors)],
-        #             "borderWidth": 1
-        #         } for i, v in enumerate(values)
-        #     ]
-        #     config["data"] = {"labels": labels, "datasets": datasets}
-        #     config["options"]["scales"] = {
-        #         "x": {"title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")}},
-        #         "y": {"beginAtZero": True, "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
-        #     }
-        #     if viz_type == "horizontal_bar":
-        #         config["options"]["indexAxis"] = "y"
-        #     if viz_type == "hierarchical_bar":
-        #         config["options"]["scales"]["x"]["type"] = "hierarchical"
-        #         config["options"]["scales"]["x"]["separator"] = "."
-        #         config["options"]["scales"]["x"]["levelPadding"] = 10  # Optional, adjust as needed
 
         elif viz_type == "line":
             config["data"] = {
@@ -639,8 +545,11 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
                 "y": {"title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
             }
 
+        # <<<=== 新增：附带原始 LLM JSON
+        config["raw_data"] = formatted_data
+
         logger.info(f"Built chart config for {viz_type}: {config}")
         return config
     except Exception as e:
         logger.error(f"Failed to build chart config: {traceback.format_exc()}")
-        return {}
+        return {"raw_data": formatted_data}  # 即使出错也保留原始数据

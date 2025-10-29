@@ -1,7 +1,9 @@
 # app.py
 """
 Streamlit frontend for the SQL Agent with chat interface.
+支持多层级柱状图（ECharts）+ 其他图表（Chart.js）
 """
+from httpx import delete
 import streamlit as st
 import streamlit.components.v1 as components
 import os
@@ -20,6 +22,9 @@ from backend.data_loader import ExcelDataSourceLoader, CSVDataSourceLoader
 import logging
 import traceback
 from datetime import datetime, timedelta
+
+# ---------- 独立的多层级图表模块 ----------
+from hierarchical_chart import render_hierarchical_bar
 
 # Configure logging
 logging.basicConfig(
@@ -139,70 +144,169 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
         with chart_placeholder.container():
             st.markdown("**图表:**")
             try:
-                chart_id = f"chart_{uuid.uuid4().hex}"
-                chart_json = json.dumps(result["viz_data"])
-                
-                # 使用兼容的 Chart.js 版本和正确的依赖
-                html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                    <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
-                    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/dist/chartjs-plugin-hierarchical.umd.min.js"></script>
-                </head>
-                <body>
-                    <div style="width: 100%; height: 480px; overflow: auto;">
-                        <canvas id="{chart_id}"></canvas>
-                    </div>
-                    <script>
-                        document.addEventListener('DOMContentLoaded', function() {{
+                viz_type = result.get("viz_type")
+                viz_data = result.get("viz_data")
+
+                # if viz_type == "hierarchical_bar":
+                #     # 使用独立模块渲染 ECharts 多层级图
+                #     html = render_hierarchical_bar(viz_data, height=520)
+                #     components.html(html, height=520, scrolling=True)
+                if viz_type == "hierarchical_bar":
+                    # <<<=== 修改：优先从 viz_data["raw_data"] 提取原始数据
+                    raw_viz = viz_data.get("raw_data") or viz_data
+
+                    # 如果 raw_data 不存在（防御），从 Chart.js config 提取
+                    if "raw_data" not in viz_data and "data" in viz_data and "datasets" in viz_data["data"]:
+                        cfg = viz_data
+                        raw_viz = {
+                            "title": cfg["options"]["plugins"]["title"]["text"],
+                            "xLabel": cfg["options"]["scales"]["x"]["title"]["text"],
+                            "yLabel": cfg["options"]["scales"]["y"]["title"]["text"],
+                            "labels": cfg["data"]["labels"],
+                            "values": [
+                                {"label": ds["label"], "data": ds["data"]}
+                                for ds in cfg["data"]["datasets"]
+                            ]
+                        }
+                    html = render_hierarchical_bar(viz_data, height=900)  # <<<=== 修改：高度从500/520改为800
+                    components.html(html, height=900, scrolling=True)
+                else:
+                    # 其他图表使用 Chart.js（保持原有逻辑）
+                    chart_id = f"chart_{uuid.uuid4().hex}"
+                    chart_json = json.dumps(viz_data)
+
+                    html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.2/build/index.umd.min.js"></script>
+                    </head>
+                    <body>
+                        <div style="width: 100%; height: 480px; overflow: auto;">
+                            <canvas id="{chart_id}"></canvas>
+                        </div>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function () {{
                             try {{
-                                // 注册层级插件
-                                if (window.ChartHierarchicalScale) {{
-                                    Chart.register(window.ChartHierarchicalScale.HierarchicalScale);
-                                    console.log('HierarchicalScale registered successfully');
-                                }} else {{
-                                    console.warn('HierarchicalScale not available, falling back to category');
+                                function registerHierarchicalPlugin() {{
+                                    if (!window.Chart) throw new Error('Chart.js not loaded');
+
+                                    const candidateNames = [
+                                        'chartjs-plugin-hierarchical',
+                                        'chartjsPluginHierarchical',
+                                        'ChartjsPluginHierarchical',
+                                        'ChartHierarchicalPlugin',
+                                        'HierarchicalPlugin',
+                                        'HierarchicalScale',
+                                    ];
+
+                                    const candidates = candidateNames.map(n => window[n]).filter(x => !!x);
+                                    const maybeDefaultCandidates = candidateNames
+                                        .map(n => (window[n] && window[n].default) ? window[n].default : null)
+                                        .filter(x => !!x);
+                                    const allCandidates = Array.from(new Set([...candidates, ...maybeDefaultCandidates]));
+
+                                    if (window.HierarchicalScale) {{
+                                        try {{
+                                            Chart.register(window.HierarchicalScale);
+                                            console.log('Registered HierarchicalScale from window.HierarchicalScale');
+                                            return true;
+                                        }} catch (e) {{
+                                            console.warn('Failed to register window.HierarchicalScale:', e);
+                                        }}
+                                    }}
+
+                                    for (const p of allCandidates) {{
+                                        try {{
+                                            if (typeof p === 'object') {{
+                                                if (p.HierarchicalScale) {{
+                                                    Chart.register(p.HierarchicalScale);
+                                                    console.log('Registered candidate.HierarchicalScale');
+                                                    return true;
+                                                }}
+                                                if (p.scale && p.scale.HierarchicalScale) {{
+                                                    Chart.register(p.scale.HierarchicalScale);
+                                                    console.log('Registered candidate.scale.HierarchicalScale');
+                                                    return true;
+                                                }}
+                                                try {{
+                                                    Chart.register(p);
+                                                    console.log('Registered candidate plugin object');
+                                                    return true;
+                                                }} catch (err) {{
+                                                    console.warn('Attempt to Chart.register(candidate) failed:', err);
+                                                }}
+                                            }}
+                                            if (typeof p === 'function') {{
+                                                try {{
+                                                    p(Chart);
+                                                    console.log('Called candidate install function with Chart');
+                                                    return true;
+                                                }} catch (err) {{
+                                                    try {{
+                                                        Chart.register(p);
+                                                        console.log('Registered candidate function as plugin');
+                                                        return true;
+                                                    }} catch (err2) {{
+                                                        console.warn('Failed to register function candidate:', err2);
+                                                    }}
+                                                }}
+                                            }}
+                                        }} catch (e) {{
+                                            console.warn('Candidate plugin registration attempt failed, trying next. Error:', e);
+                                        }}
+                                    }}
+
+                                    console.warn('No hierarchical plugin found or registration failed. Candidates checked:', allCandidates.length);
+                                    return false;
                                 }}
+
+                                const registered = registerHierarchicalPlugin();
 
                                 var ctx = document.getElementById('{chart_id}').getContext('2d');
                                 var config = {chart_json};
-                                
-                                // 确保配置正确
-                                var xScale = config.options?.scales?.x;
-                                if (xScale && xScale.type === 'hierarchical') {{
-                                    if (!Chart.registry.getScale('hierarchical')) {{
-                                        console.warn('Hierarchical scale not available, using category');
-                                        xScale.type = 'category';
-                                        delete xScale.hierarchical;
-                                    }} else {{
-                                        xScale.hierarchical = xScale.hierarchical || {{
-                                            separator: '.',
-                                            levelPadding: 15,
-                                            offset: true,
-                                            collapse: false
-                                        }};
+
+                                try {{
+                                    var xScale = config.options && config.options.scales && config.options.scales.x;
+                                    if (xScale && xScale._hierarchical) {{
+                                        if (registered && Chart.registry.getScale && Chart.registry.getScale('hierarchical')) {{
+                                            xScale.type = 'hierarchical';
+                                            xScale.hierarchical = xScale.hierarchical || {{}};
+                                            Object.assign(xScale.hierarchical, xScale._hierarchical);
+                                            delete xScale._hierarchical;
+                                        }} else if (registered) {{
+                                            xScale.type = 'hierarchical';
+                                            xScale.hierarchical = xScale.hierarchical || {{}};
+                                            Object.assign(xScale.hierarchical, xScale._hierarchical);
+                                            delete xScale._hierarchical;
+                                        }} else {{
+                                            console.warn('Hierarchical plugin not available; using category axis.');
+                                            xScale.type = 'category';
+                                        }}
                                     }}
+                                }} catch (err) {{
+                                    console.warn('Error while applying hierarchical config migration:', err);
                                 }}
-                                
-                                // 移除可能导致问题的 zoom 插件配置（如果未引入）
-                                if (config.options?.plugins?.zoom && !window.ChartZoom) {{
+
+                                if (config.options && config.options.plugins && config.options.plugins.zoom && !window.ChartZoom) {{
                                     delete config.options.plugins.zoom;
                                 }}
-                                
+
                                 var myChart = new Chart(ctx, config);
                                 console.log('Chart created successfully');
+
                             }} catch (e) {{
                                 console.error('Chart creation error:', e);
-                                // 备用方案：使用普通柱状图
                                 try {{
                                     var ctx = document.getElementById('{chart_id}').getContext('2d');
                                     var config = {chart_json};
                                     config.type = 'bar';
-                                    if (config.options?.scales?.x) {{
+                                    if (config.options && config.options.scales && config.options.scales.x) {{
                                         config.options.scales.x.type = 'category';
-                                        delete config.options.scales.x.hierarchical;
+                                        if (config.options.scales.x._hierarchical) delete config.options.scales.x._hierarchical;
+                                        if (config.options.scales.x.hierarchical) delete config.options.scales.x.hierarchical;
                                     }}
                                     var myChart = new Chart(ctx, config);
                                     console.log('Fallback chart created');
@@ -211,518 +315,131 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                                 }}
                             }}
                         }});
-                    </script>
-                </body>
-                </html>
-                """
-                components.html(html, height=500, scrolling=False)
+                        </script>
+                    </body>
+                    </html>
+                    """
+                    components.html(html, height=500, scrolling=False)
+                    st.code(f"DEBUG viz_data: {json.dumps(result.get('viz_data'), ensure_ascii=False)[:1000]}")
+
             except Exception as e:
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
                 logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-            # html = """
-            #         <html>
-            #         <head>
-            #             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-            #             <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
-            #         </head>
-            #         <body>
-            #             <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-            #             <script>
-            #                 document.addEventListener('DOMContentLoaded', function() {{
-            #                     try {{
-            #                         // 尝试以多种方式找到并注册 hierarchical 插件（不同版本/UMD 可能暴露不同名字）
-            #                         function registerHierarchicalPlugin() {{
-            #                             if (!window.Chart) throw new Error('Chart.js not loaded');
-
-            #                             // 列出可能的全局名（常见 UMD 暴露）
-            #                             const candidates = [
-            #                                 window.HierarchicalPlugin,
-            #                                 window.HierarchicalScale,
-            #                                 window['chartjs-plugin-hierarchical'],
-            #                                 window['chartjsPluginHierarchical'],
-            #                                 window['chartjs-plugin-hierarchical-v4'],
-            #                                 window['ChartjsPluginHierarchical'],
-            #                                 (window['chartjs-plugin-hierarchical'] && window['chartjs-plugin-hierarchical'].default),
-            #                                 (window['chartjsPluginHierarchical'] && window['chartjsPluginHierarchical'].default)
-            #                             ];
-
-            #                             const plugins = Array.from(new Set(candidates.filter(p => p)));
-
-            #                             if (plugins.length === 0) {{
-            #                                 if (window.HierarchicalScale) {{
-            #                                     Chart.register(window.HierarchicalScale);
-            #                                     console.log('Registered HierarchicalScale from window.HierarchicalScale');
-            #                                     return true;
-            #                                 }}
-            #                                 console.warn('No hierarchical plugin found on window. Candidates checked:', candidates);
-            #                                 return false;
-            #                             }}
-
-            #                             for (const p of plugins) {{
-            #                                 try {{
-            #                                     if (p.HierarchicalScale) {{
-            #                                         Chart.register(p.HierarchicalScale);
-            #                                         console.log('Registered plugin.HierarchicalScale');
-            #                                         return true;
-            #                                     }}
-            #                                     Chart.register(p);
-            #                                     console.log('Registered hierarchical plugin (generic)');
-            #                                     return true;
-            #                                 }} catch (regErr) {{
-            #                                     console.warn('Failed to register candidate plugin, trying next. Error:', regErr);
-            #                                     continue;
-            #                                 }}
-            #                             }}
-
-            #                             console.warn('Tried to register hierarchical plugin but all attempts failed.');
-            #                             return false;
-            #                         }}
-
-            #                         if (!window.Chart) {{
-            #                             throw new Error('Chart.js not available on window');
-            #                         }}
-            #                         const registered = registerHierarchicalPlugin();
-            #                         if (!registered) {{
-            #                             console.warn('Hierarchical plugin not registered — falling back to normal category axis if necessary.');
-            #                         }} else {{
-            #                             console.log('Hierarchical plugin registered successfully');
-            #                         }}
-
-            #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
-            #                         var config = {chart_json};
-            #                         try {{
-            #                             if (config.options && config.options.scales && config.options.scales.x && config.options.scales.x.type === 'hierarchical') {{
-            #                                 if (!registered) {{
-            #                                     console.warn('Config requests hierarchical scale but plugin not registered — switching to category.');
-            #                                     config.options.scales.x.type = 'category';
-            #                                 }}
-            #                             }}
-            #                         }} catch(e) {{
-            #                             console.warn('Error checking config hierarchical type:', e);
-            #                         }}
-            #                         var myChart = new Chart(ctx, config);
-            #                         console.log('Hierarchical chart initialized (or fallback if plugin unavailable)');
-            #                     }} catch (e) {{
-            #                         console.error('Chart.js error: ' + (e && e.message ? e.message : e));
-            #                         try {{
-            #                             var fallbackConfig = JSON.parse({chart_json});
-            #                             if (fallbackConfig.options && fallbackConfig.options.scales && fallbackConfig.options.scales.x) {{
-            #                                 fallbackConfig.options.scales.x.type = 'category';
-            #                                 if (fallbackConfig.options.scales.x.hierarchical) delete fallbackConfig.options.scales.x.hierarchical;
-            #                                 if (fallbackConfig.options.scales.x.separator) delete fallbackConfig.options.scales.x.separator;
-            #                                 if (fallbackConfig.options.scales.x.levelPadding) delete fallbackConfig.options.scales.x.levelPadding;
-            #                             }}
-            #                             var ctx = document.getElementById('{chart_id}').getContext('2d');
-            #                             var myChart = new Chart(ctx, fallbackConfig);
-            #                             console.log('Fallback standard bar chart rendered');
-            #                         }} catch (fe) {{
-            #                             console.error('Fallback render failed: ' + fe);
-            #                         }}
-            #                     }}
-            #                 }});
-            #             </script>
-            #         </body>
-            #         </html>
-            #         """.format(chart_id=chart_id, chart_json=chart_json)
-
-    # if result.get("viz_data") and result.get("viz_type") != "none":
-    #     with chart_placeholder.container():
-    #         st.markdown("**图表:**")
-    #         chart_id = f"chart_{uuid.uuid4().hex}"
-    #         chart_json = json.dumps(result["viz_data"])
-    #         html = f"""
-    #         <html>
-    #         <head>
-    #             <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-    #             <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@3.0.0/dist/chartjs-plugin-hierarchical.min.js"></script>
-    #         </head>
-    #         <body>
-    #             <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-    #             <script>
-    #                 document.addEventListener('DOMContentLoaded', function() {{
-    #                     try {{
-    #                         Chart.register(window['chartjs-plugin-hierarchical'].HierarchicalScale);
-    #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
-    #                         var myChart = new Chart(ctx, {chart_json});
-    #                     }} catch (e) {{
-    #                         console.error('Chart.js error: ' + e.message);
-    #                     }}
-    #                 }});
-    #             </script>
-    #         </body>
-    #         </html>
-    #         """
-    #         try:
-    #             components.html(html, height=450, scrolling=False)
-    #         except Exception as e:
-    #             st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-    #             logger.error(f"Chart rendering failed: {traceback.format_exc()}")
 
     if result.get("tables"):
         with table_placeholder.container():
             st.markdown("**表格:**")
             for table in result["tables"]:
-                st.markdown(f"**{table['title']}**")
-                df = pd.DataFrame(table["data"])
-                st.dataframe(df, width='stretch')
-                logger.debug(f"Table displayed: {table['title']}")
+                if table.get("data"):
+                    st.markdown(f"**{table['title']}**")
+                    st.dataframe(pd.DataFrame(table["data"]))
 
-    status_placeholder.markdown(f"处理时间: {result['processing_time']:.2f}秒")
+# ------------------- SESSION STATE 初始化（关键修复） -------------------
+def _ensure_thread_state(thread_id: str):
+    """确保当前 thread_id 对应的所有字典都已初始化"""
+    if thread_id not in st.session_state.chat_history:
+        st.session_state.chat_history[thread_id] = []
+    if thread_id not in st.session_state.tool_history:
+        st.session_state.tool_history[thread_id] = []
+    if thread_id not in st.session_state.first_questions:
+        st.session_state.first_questions[thread_id] = ""
 
-# # 添加简单认证
-# def authenticate():
-#     """简单用户名/密码认证。"""
-#     if "authenticated" not in st.session_state:
-#         st.session_state.authenticated = False
-#     if not st.session_state.authenticated:
-#         username = st.text_input("用户名")
-#         password = st.text_input("密码", type="password")
-#         if st.button("登录"):
-#             if username == "admin" and password == "password":
-#                 st.session_state.authenticated = True
-#                 st.rerun()
-#             else:
-#                 st.error("无效凭证")
-#                 return False
-#     return st.session_state.authenticated
+# 基础字典
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
+if "tool_history" not in st.session_state:
+    st.session_state.tool_history = {}
+if "first_questions" not in st.session_state:
+    st.session_state.first_questions = {}
 
-# # 添加速率限制
-# def check_rate_limit():
-#     if "last_query_time" not in st.session_state:
-#         st.session_state.last_query_time = 0
-#         st.session_state.query_count = 0
-#     now = time.time()
-#     if now - st.session_state.last_query_time > 60:
-#         st.session_state.query_count = 0
-#         st.session_state.last_query_time = now
-#     if st.session_state.query_count >= 10:
-#         st.error("查询速率超过限制，请稍后重试。")
-#         return False
-#     st.session_state.query_count += 1
-#     return True
+# 当前线程
+if "current_thread_id" not in st.session_state:
+    st.session_state.current_thread_id = str(uuid.uuid4())
 
-# Streamlit UI
-# st.title("灵图SQL视图")
-st.title("🚀 灵图SQL对话")
-# st.markdown("**实时监控关键指标，支持交互过滤和刷新。**")
-# if not authenticate():
-#     st.stop()
+# 关键：每次页面加载都确保当前 thread 已初始化
+_ensure_thread_state(st.session_state.current_thread_id)
 
-# Sidebar for session management
+# ------------------- 侧边栏：文件上传 & DB 重建 -------------------
 with st.sidebar:
-    st.header("聊天历史")
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = {}
-        st.session_state.first_questions = {}
-        st.session_state.chat_creation_times = {}
-        st.session_state.current_thread_id = str(uuid.uuid4())
-        st.session_state.tool_history = {}
-        st.session_state.chat_history[st.session_state.current_thread_id] = []
-        st.session_state.first_questions[st.session_state.current_thread_id] = "新建对话"
-        st.session_state.chat_creation_times[st.session_state.current_thread_id] = datetime.now()
-        st.session_state.tool_history[st.session_state.current_thread_id] = []
-        logger.info(f"Initialized first conversation: {st.session_state.current_thread_id}")
+    st.title("文件上传与数据库重建")
+    uploaded_files = st.file_uploader("上传 Excel 或 CSV 文件", accept_multiple_files=True, type=["xlsx", "csv"])
+    sheet_configs = {}
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            if uploaded_file.name.endswith(".xlsx"):
+                sheets = load_excel_sheets(uploaded_file.getvalue(), uploaded_file.name)
+                if sheets:
+                    st.markdown(f"**{uploaded_file.name} 工作表选择:**")
+                    selected_sheets = []
+                    for sheet in sheets:
+                        selected = st.checkbox(sheet, value=True, key=f"{uploaded_file.name}_{sheet}")
+                        if selected:
+                            selected_sheets.append((sheet, None))
+                    sheet_configs[uploaded_file.name] = selected_sheets
+                else:
+                    st.warning(f"无法加载 {uploaded_file.name} 的工作表。")
+    if st.button("重建数据库"):
+        rebuild_db(uploaded_files, sheet_configs)
 
-    if st.button("新建聊天 +"):
-        new_thread_id = str(uuid.uuid4())
-        st.session_state.chat_history[new_thread_id] = []
-        st.session_state.first_questions[new_thread_id] = "新建对话"
-        st.session_state.chat_creation_times[new_thread_id] = datetime.now()
-        st.session_state.tool_history[new_thread_id] = []
-        st.session_state.current_thread_id = new_thread_id
-        logger.info(f"Created new conversation: {new_thread_id}")
+# ------------------- 侧边栏：对话线程管理 -------------------
+with st.sidebar:
+    st.title("对话线程")
+    if st.button("新对话"):
+        new_thread = str(uuid.uuid4())
+        st.session_state.current_thread_id = new_thread
+        _ensure_thread_state(new_thread)   # 立即初始化
         st.rerun()
 
-    now = datetime.now()
-    groups = {
-        "今天": [],
-        "昨天": [],
-        "过去7天": [],
-        "过去30天": [],
-        "更早": []
-    }
+    # 按创建顺序倒序显示（最近的在上面）
+    for thread_id in reversed(list(st.session_state.chat_history.keys())):
+        first_q = st.session_state.first_questions.get(thread_id, "未知问题")
+        label = f"{first_q[:30]}... ({thread_id[:8]})" if len(first_q) > 30 else f"{first_q} ({thread_id[:8]})"
+        if st.button(label, key=f"switch_{thread_id}"):
+            st.session_state.current_thread_id = thread_id
+            _ensure_thread_state(thread_id)
+            st.rerun()
 
-    for thread_id, creation_time in sorted(st.session_state.chat_creation_times.items(), key=lambda x: x[1], reverse=True):
-        delta = now - creation_time
-        if delta < timedelta(days=1):
-            groups["今天"].append((thread_id, creation_time))
-        elif delta < timedelta(days=2):
-            groups["昨天"].append((thread_id, creation_time))
-        elif delta < timedelta(days=7):
-            groups["过去7天"].append((thread_id, creation_time))
-        elif delta < timedelta(days=30):
-            groups["过去30天"].append((thread_id, creation_time))
-        else:
-            groups["更早"].append((thread_id, creation_time))
-
-    for group_name, threads in groups.items():
-        if threads:
-            st.subheader(group_name)
-            for thread_id, creation_time in threads:
-                label = st.session_state.first_questions.get(thread_id, "未知")
-                if st.button(f"{label} - {creation_time.strftime('%Y-%m-%d %H:%M')}", key=thread_id):
-                    st.session_state.current_thread_id = thread_id
-                    logger.info(f"Switched to conversation: {thread_id}")
-                    st.rerun()
-
-# Chat interface
+# ------------------- 主聊天界面 -------------------
+st.title("SQL Agent with Viz - Streamlit Frontend")
 chat_container = st.container()
+
+# 显示历史消息
 with chat_container:
-    # st.header("灵图SQL对话")
-    
-    for message in st.session_state.chat_history[st.session_state.current_thread_id]:
-        if isinstance(message, (HumanMessage, AIMessage)):
-            role = "user" if isinstance(message, HumanMessage) else "assistant"
-            with st.chat_message(role):
-                st.markdown(message.content)
-                if isinstance(message, AIMessage) and hasattr(message, "tables"):
-                    for table in message.tables:
+    for msg in st.session_state.chat_history[st.session_state.current_thread_id]:
+        if isinstance(msg, HumanMessage):
+            with st.chat_message("user"):
+                st.markdown(msg.content)
+        elif isinstance(msg, AIMessage):
+            with st.chat_message("assistant"):
+                st.markdown(msg.content)
+                if hasattr(msg, "chart_config") and msg.chart_config:
+                    st.markdown("**图表:**")
+                    components.html(msg.chart_config, height=500)
+                if hasattr(msg, "tables") and msg.tables:
+                    st.markdown("**表格:**")
+                    for table in msg.tables:
                         st.markdown(f"**{table['title']}**")
-                        st.dataframe(pd.DataFrame(table["data"]), width='stretch')
-                
-                if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                    chart_id = f"chart_{uuid.uuid4().hex}"
-                    chart_json = json.dumps(message.chart_config)
-                    html = f"""
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                        <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
-                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@2.0.0/dist/chartjs-plugin-hierarchical.umd.min.js"></script>
-                    </head>
-                    <body>
-                        <div style="width: 100%; height: 480px; overflow: auto;">
-                            <canvas id="{chart_id}"></canvas>
-                        </div>
-                        <script>
-                            document.addEventListener('DOMContentLoaded', function() {{
-                                try {{
-                                    // 注册层级插件
-                                    if (window.ChartHierarchicalScale) {{
-                                        Chart.register(window.ChartHierarchicalScale.HierarchicalScale);
-                                        console.log('HierarchicalScale registered successfully');
-                                    }} else {{
-                                        console.warn('HierarchicalScale not available, falling back to category');
-                                    }}
+                        st.dataframe(pd.DataFrame(table["data"]))
 
-                                    var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                    var config = {chart_json};
-                                    
-                                    // 确保配置正确
-                                    var xScale = config.options?.scales?.x;
-                                    if (xScale && xScale.type === 'hierarchical') {{
-                                        if (!Chart.registry.getScale('hierarchical')) {{
-                                            console.warn('Hierarchical scale not available, using category');
-                                            xScale.type = 'category';
-                                            delete xScale.hierarchical;
-                                        }} else {{
-                                            xScale.hierarchical = xScale.hierarchical || {{
-                                                separator: '.',
-                                                levelPadding: 15,
-                                                offset: true,
-                                                collapse: false
-                                            }};
-                                        }}
-                                    }}
-                                    
-                                    // 移除可能导致问题的 zoom 插件配置（如果未引入）
-                                    if (config.options?.plugins?.zoom && !window.ChartZoom) {{
-                                        delete config.options.plugins.zoom;
-                                    }}
-                                    
-                                    var myChart = new Chart(ctx, config);
-                                    console.log('Chart created successfully');
-                                }} catch (e) {{
-                                    console.error('Chart creation error:', e);
-                                    // 备用方案：使用普通柱状图
-                                    try {{
-                                        var ctx = document.getElementById('{chart_id}').getContext('2d');
-                                        var config = {chart_json};
-                                        config.type = 'bar';
-                                        if (config.options?.scales?.x) {{
-                                            config.options.scales.x.type = 'category';
-                                            delete config.options.scales.x.hierarchical;
-                                        }}
-                                        var myChart = new Chart(ctx, config);
-                                        console.log('Fallback chart created');
-                                    }} catch (fallbackError) {{
-                                        console.error('Fallback also failed:', fallbackError);
-                                    }}
-                                }}
-                            }});
-                        </script>
-                    </body>
-                    </html>
-                    """
-
-                    try:
-                        components.html(html, height=480, scrolling=False)
-                    except Exception as e:
-                        st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-                        logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
-                # if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                #     chart_id = f"chart_{uuid.uuid4().hex}"
-                #     chart_json = json.dumps(message.chart_config)
-                #     html = """
-                #     <html>
-                #     <head>
-                #         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                #         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@4.4.5/build/index.umd.min.js"></script>
-                #     </head>
-                #     <body>
-                #         <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                #         <script>
-                #             document.addEventListener('DOMContentLoaded', function() {{
-                #                 try {{
-                #                     // 尝试以多种方式找到并注册 hierarchical 插件（不同版本/UMD 可能暴露不同名字）
-                #                     function registerHierarchicalPlugin() {{
-                #                         if (!window.Chart) throw new Error('Chart.js not loaded');
-
-                #                         // 列出可能的全局名（常见 UMD 暴露）
-                #                         const candidates = [
-                #                             window.HierarchicalPlugin,
-                #                             window.HierarchicalScale,
-                #                             window['chartjs-plugin-hierarchical'],
-                #                             window['chartjsPluginHierarchical'],
-                #                             window['chartjs-plugin-hierarchical-v4'],
-                #                             window['ChartjsPluginHierarchical'],
-                #                             (window['chartjs-plugin-hierarchical'] && window['chartjs-plugin-hierarchical'].default),
-                #                             (window['chartjsPluginHierarchical'] && window['chartjsPluginHierarchical'].default)
-                #                         ];
-
-                #                         const plugins = Array.from(new Set(candidates.filter(p => p)));
-
-                #                         if (plugins.length === 0) {{
-                #                             if (window.HierarchicalScale) {{
-                #                                 Chart.register(window.HierarchicalScale);
-                #                                 console.log('Registered HierarchicalScale from window.HierarchicalScale');
-                #                                 return true;
-                #                             }}
-                #                             console.warn('No hierarchical plugin found on window. Candidates checked:', candidates);
-                #                             return false;
-                #                         }}
-
-                #                         for (const p of plugins) {{
-                #                             try {{
-                #                                 if (p.HierarchicalScale) {{
-                #                                     Chart.register(p.HierarchicalScale);
-                #                                     console.log('Registered plugin.HierarchicalScale');
-                #                                     return true;
-                #                                 }}
-                #                                 Chart.register(p);
-                #                                 console.log('Registered hierarchical plugin (generic)');
-                #                                 return true;
-                #                             }} catch (regErr) {{
-                #                                 console.warn('Failed to register candidate plugin, trying next. Error:', regErr);
-                #                                 continue;
-                #                             }}
-                #                         }}
-
-                #                         console.warn('Tried to register hierarchical plugin but all attempts failed.');
-                #                         return false;
-                #                     }}
-
-                #                     if (!window.Chart) {{
-                #                         throw new Error('Chart.js not available on window');
-                #                     }}
-                #                     const registered = registerHierarchicalPlugin();
-                #                     if (!registered) {{
-                #                         console.warn('Hierarchical plugin not registered — falling back to normal category axis if necessary.');
-                #                     }} else {{
-                #                         console.log('Hierarchical plugin registered successfully');
-                #                     }}
-
-                #                     var ctx = document.getElementById('{chart_id}').getContext('2d');
-                #                     var config = {chart_json};
-                #                     try {{
-                #                         if (config.options && config.options.scales && config.options.scales.x && config.options.scales.x.type === 'hierarchical') {{
-                #                             if (!registered) {{
-                #                                 console.warn('Config requests hierarchical scale but plugin not registered — switching to category.');
-                #                                 config.options.scales.x.type = 'category';
-                #                             }}
-                #                         }}
-                #                     }} catch(e) {{
-                #                         console.warn('Error checking config hierarchical type:', e);
-                #                     }}
-                #                     var myChart = new Chart(ctx, config);
-                #                     console.log('Hierarchical chart initialized (or fallback if plugin unavailable)');
-                #                 }} catch (e) {{
-                #                     console.error('Chart.js error: ' + (e && e.message ? e.message : e));
-                #                     try {{
-                #                         var fallbackConfig = JSON.parse({chart_json});
-                #                         if (fallbackConfig.options && fallbackConfig.options.scales && fallbackConfig.options.scales.x) {{
-                #                             fallbackConfig.options.scales.x.type = 'category';
-                #                             if (fallbackConfig.options.scales.x.hierarchical) delete fallbackConfig.options.scales.x.hierarchical;
-                #                             if (fallbackConfig.options.scales.x.separator) delete fallbackConfig.options.scales.x.separator;
-                #                             if (fallbackConfig.options.scales.x.levelPadding) delete fallbackConfig.options.scales.x.levelPadding;
-                #                         }}
-                #                         var ctx = document.getElementById('{chart_id}').getContext('2d');
-                #                         var myChart = new Chart(ctx, fallbackConfig);
-                #                         console.log('Fallback standard bar chart rendered');
-                #                     }} catch (fe) {{
-                #                         console.error('Fallback render failed: ' + fe);
-                #                     }}
-                #                 }}
-                #             }});
-                #         </script>
-                #     </body>
-                #     </html>
-                #     """.format(chart_id=chart_id, chart_json=chart_json)
-
-                #     try:
-                #         components.html(html, height=450, scrolling=False)
-                #     except Exception as e:
-                #         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-                #         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
-                # if isinstance(message, AIMessage) and hasattr(message, "chart_config") and message.chart_config:
-                #     chart_id = f"chart_{uuid.uuid4().hex}"
-                #     chart_json = json.dumps(message.chart_config)
-                #     html = f"""
-                #     <html>
-                #     <head>
-                #         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-                #         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-hierarchical@3.0.0/dist/chartjs-plugin-hierarchical.min.js"></script>
-                #     </head>
-                #     <body>
-                #         <canvas id="{chart_id}" style="width:100%; max-width:800px; height:400px;"></canvas>
-                #         <script>
-                #             document.addEventListener('DOMContentLoaded', function() {{
-                #                 try {{
-                #                     Chart.register(window['chartjs-plugin-hierarchical'].HierarchicalScale);
-                #                     var ctx = document.getElementById('{chart_id}').getContext('2d');
-                #                     var myChart = new Chart(ctx, {chart_json});
-                #                 }} catch (e) {{
-                #                     console.error('Chart.js error: ' + e.message);
-                #                 }}
-                #             }});
-                #         </script>
-                #     </body>
-                #     </html>
-                #     """
-                #     try:
-                #         components.html(html, height=450, scrolling=False)
-                #     except Exception as e:
-                #         st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")
-                #         logger.error(f"Chart rendering failed: {traceback.format_exc()}")
-
+# ------------------- 输入框 -------------------
 prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
 if prompt:
-    # if not check_rate_limit():
-    #     st.stop()
     user_ip = st.query_params.get("user_ip", "unknown")
     logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
-    if not st.session_state.chat_history[st.session_state.current_thread_id]:
-        st.session_state.first_questions[st.session_state.current_thread_id] = prompt[:50] + "..." if len(prompt) > 50 else prompt
-    
+
+    # 记录首次问题（用于侧边栏展示）
+    if not st.session_state.first_questions[st.session_state.current_thread_id]:
+        st.session_state.first_questions[st.session_state.current_thread_id] = (
+            prompt[:50] + "..." if len(prompt) > 50 else prompt
+        )
+
     user_message = HumanMessage(content=prompt)
     st.session_state.chat_history[st.session_state.current_thread_id].append(user_message)
+
     with chat_container:
         with st.chat_message("user"):
             st.markdown(prompt)
-        
+
         with st.chat_message("assistant"):
             status_placeholder = st.empty()
             answer_placeholder = st.empty()
@@ -731,10 +448,13 @@ if prompt:
             status_placeholder.markdown("开始查询处理...")
             with st.spinner("处理中..."):
                 try:
+                    # 过滤仅保留 Human/AI 消息（不带 tool_calls）
                     filtered_messages = [
                         msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
-                        if isinstance(msg, (HumanMessage, AIMessage)) and not (isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls)
+                        if isinstance(msg, (HumanMessage, AIMessage))
+                        and not (isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None))
                     ]
+
                     inputs = {
                         "messages": filtered_messages + [user_message],
                         "question": prompt,
@@ -742,24 +462,39 @@ if prompt:
                         "status_messages": []
                     }
                     config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
-                    result = process_query(graph, inputs, config, lambda msg: status_placeholder.markdown(translate_status_message(msg)))
+                    result = process_query(
+                        graph, inputs, config,
+                        lambda msg: status_placeholder.markdown(translate_status_message(msg))
+                    )
                     stream_response(result, status_placeholder, answer_placeholder, chart_placeholder, table_placeholder)
-                    assistant_message = AIMessage(content=result['answer'])
-                    if result["tables"]:
+
+                    # 保存 assistant 消息（含图表/表格）
+                    assistant_message = AIMessage(content=result.get("answer", ""))
+                    if result.get("tables"):
                         assistant_message.tables = result["tables"]
-                    if result["viz_data"]:
+                    if result.get("viz_data"):
                         assistant_message.chart_config = result["viz_data"]
-                    st.session_state.chat_history[st.session_state.current_thread_id] = result["messages"] + [assistant_message]
+
+                    # 更新历史（保留所有消息，供后续上下文）
+                    st.session_state.chat_history[st.session_state.current_thread_id] = (
+                        result.get("messages", []) + [assistant_message]
+                    )
+                    # 只保留关键工具历史
                     st.session_state.tool_history[st.session_state.current_thread_id] = [
                         h for h in result.get("tool_history", [])
-                        if h["tool"] in ["sql_db_list_tables", "sql_db_schema", "sql_db_query", "sql_db_query_checker", "check_result"]
+                        if h["tool"] in [
+                            "sql_db_list_tables", "sql_db_schema",
+                            "sql_db_query", "sql_db_query_checker", "check_result"
+                        ]
                     ]
+
                 except Exception as e:
                     status_placeholder.error("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
                     logger.error(f"Query failed for IP {user_ip}: {traceback.format_exc()}")
-                    assistant_message = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                    st.session_state.chat_history[st.session_state.current_thread_id].append(assistant_message)
+                    err_msg = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
+                    st.session_state.chat_history[st.session_state.current_thread_id].append(err_msg)
 
+# ------------------- 退出指令 -------------------
 if prompt and prompt.lower() in ["exit", "quit"]:
     st.write("退出程序。")
     logger.info("User exited the program")

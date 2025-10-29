@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>多层级分组柱状图 - 完美 Excel 效果</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+    canvas { background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <canvas id="myChart" height="180"></canvas>
+
+  <script>
+    // === 数据 ===
+    const rawLabels = [
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-40",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-42",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-40",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights.2025-41",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-42",
+      "SROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights.2025-40"
+    ];
+
+    const values = [2,1,1,3,7,4,1,1,1,1,2,3,1,1];
+
+    // === 解析层级结构 ===
+    const hierarchy = rawLabels.map(label => label.split('.'));
+    const levels = hierarchy[0].length; // 4 级
+
+    // 构建树
+    const root = { children: [], level: -1 };
+    hierarchy.forEach((path, i) => {
+      let node = root;
+      path.forEach((name, level) => {
+        let child = node.children.find(c => c.name === name);
+        if (!child) {
+          child = { name, children: [], level, indices: [] };
+          node.children.push(child);
+        }
+        node = child;
+      });
+      node.indices.push(i);
+    });
+
+    // 递归计算每个节点的像素位置（用于居中标签）
+    let barWidth, barSpacing;
+    function calculatePositions(node, chart) {
+      if (node.indices.length > 0) {
+        const positions = node.indices.map(i => chart.getDatasetMeta(0).data[i].x);
+        node.minX = Math.min(...positions);
+        node.maxX = Math.max(...positions);
+        node.centerX = (node.minX + node.maxX) / 2;
+      } else {
+        const childPositions = node.children.flatMap(c => 
+          c.indices.length > 0 ? [chart.getDatasetMeta(0).data[c.indices[0]].x] : []
+        );
+        if (childPositions.length > 0) {
+          node.minX = Math.min(...childPositions);
+          node.maxX = Math.max(...childPositions);
+          node.centerX = (node.minX + node.maxX) / 2;
+        }
+      }
+      node.children.forEach(child => calculatePositions(child, chart));
+    }
+
+    // === Chart.js 配置 ===
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rawLabels,
+        datasets: [{
+          label: '故障数',
+          data: values,
+          backgroundColor: '#3366cc',
+          barThickness: 20
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: '2025年10月各集群AOC故障数按型号、厂商、周分布',
+            font: { size: 16, weight: 'bold' }
+          },
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function(tooltipItems) {
+                const idx = tooltipItems[0].dataIndex;
+                return rawLabels[idx].replace(/\./g, ' → ');
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { display: false }, // 隐藏默认标签
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: '故障数' }
+          }
+        }
+      },
+      plugins: [{
+        id: 'hierarchical-x-axis',
+        afterDraw: function(chart) {
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.font = '10px Arial';
+
+          // 等待布局计算完成
+          if (!chart.scales.x.min || !root.children[0]) return;
+
+          // 计算柱子宽度（仅首次）
+          if (!barWidth) {
+            const meta = chart.getDatasetMeta(0);
+            barWidth = meta.data[0].width;
+            barSpacing = meta.data[1].x - meta.data[0].x - barWidth;
+          }
+
+          // 计算每个节点的中心位置
+          calculatePositions(root, chart);
+
+          // 绘制每一层
+          const lineHeight = 16;
+          let yOffset = chart.height - 20;
+
+          function drawLevel(nodes, level) {
+            if (level >= levels) return;
+            nodes.forEach(node => {
+              if (node.centerX) {
+                ctx.fillStyle = level === levels - 1 ? '#000' : '#555';
+                ctx.fillText(node.name, node.centerX, yOffset);
+              }
+              drawLevel(node.children, level + 1);
+            });
+            yOffset += lineHeight;
+          }
+
+          // 从最底层向上绘制
+          let currentLevel = root;
+          for (let l = levels - 1; l >= 0; l--) {
+            const nodesAtLevel = [];
+            function collect(node) {
+              if (node.level === l) nodesAtLevel.push(node);
+              node.children.forEach(collect);
+            }
+            collect(currentLevel);
+            drawLevel(nodesAtLevel, l);
+            yOffset -= lineHeight;
+          }
+
+          ctx.restore();
+        }
+      }]
+    });
+  </script>
+</body>
+</html>

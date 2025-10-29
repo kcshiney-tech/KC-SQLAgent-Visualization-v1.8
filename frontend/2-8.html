@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>多层级 X 轴（递归分组 + 合并第一个非零周数据 + 动态分割线 + 精准居中）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; margin: 12px; }
+    #main { width: 100%; height: 820px; border: 1px solid #eee; }
+    .note { margin-top:10px; color:#666; font-size:13px; }
+    .controls { margin-top:8px; color:#444; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div id="main"></div>
+  <div class="note">
+    说明：按 <code>.</code> 分层（集群.型号.厂商），不去掉前缀；对相同完整标签做去重合并（每周取第一个非零），递归分组并居中合并。<br>
+    <b>新增：</b> 每层背景渐变灰度 + 动态分割线（仅在变化层级绘制）+ 标签精准居中
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+(() => {
+  // ------------------ 示例数据（原始） ------------------
+  const raw = {
+    "title": "2025年10月各周不同集群AOC故障数分布",
+    "xLabel": "集群.AOC型号.厂商",
+    "yLabel": "故障数",
+    "labels": [
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT"
+    ],
+    "values": [
+      { "data": [1, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "label": "第39周" },
+      { "data": [1, 0, 0, 0, 1, 7, 1, 3, 1, 0, 0, 0, 0, 0], "label": "第40周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 4, 1, 0, 0], "label": "第41周" },
+      { "data": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1], "label": "第42周" }
+    ]
+  };
+
+  // ------------------ 配置参数 ------------------
+  const labelFontSize = 11;
+  const gapBetweenAxes = 30;
+  const extraBottomPadding = 10;
+  const gridBase = { left: 130, right: 80, top: 80, bottom: 28 };
+
+  // ------------------ 工具：自然排序 ------------------
+  function naturalCompare(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // ------------------ 1) 去重合并（取第一个非零） ------------------
+  function dedupeMergeFirstNonZero(labels, valuesPerWeek) {
+    const labelIndex = new Map();
+    const uniqueLabels = [];
+    const weekCount = valuesPerWeek.length;
+    const merged = Array.from({ length: weekCount }, () => []);
+
+    for (let i = 0; i < labels.length; i++) {
+      const lbl = labels[i];
+      let idx;
+      if (labelIndex.has(lbl)) {
+        idx = labelIndex.get(lbl);
+      } else {
+        idx = uniqueLabels.length;
+        uniqueLabels.push(lbl);
+        labelIndex.set(lbl, idx);
+        for (let w = 0; w < weekCount; w++) merged[w][idx] = 0;
+      }
+      for (let w = 0; w < weekCount; w++) {
+        const val = Number(valuesPerWeek[w].data[i] || 0);
+        if ((merged[w][idx] === 0 || merged[w][idx] == null) && val !== 0) {
+          merged[w][idx] = val;
+        }
+      }
+    }
+    for (let w = 0; w < weekCount; w++) {
+      for (let k = 0; k < uniqueLabels.length; k++) {
+        if (merged[w][k] == null) merged[w][k] = 0;
+      }
+    }
+    return { uniqueLabels, merged, weeks: valuesPerWeek.map(w => w.label) };
+  }
+
+  const dedupResult = dedupeMergeFirstNonZero(raw.labels, raw.values);
+  let uniqueLabels = dedupResult.uniqueLabels;
+  const mergedWeekData = dedupResult.merged;
+  const weeks = dedupResult.weeks;
+
+  // ------------------ 2) 分层 & 自然排序 ------------------
+  function splitRows(labels) {
+    const rows = labels.map(s => s.split('.'));
+    const maxDepth = Math.max(...rows.map(r => r.length));
+    rows.forEach(r => { while (r.length < maxDepth) r.push(''); });
+    return { rows, maxDepth };
+  }
+
+  function hierarchicalSort(labels) {
+    const parsed = splitRows(labels);
+    const rows = parsed.rows;
+    const maxDepth = parsed.maxDepth;
+    const indices = labels.map((_, i) => i);
+    indices.sort((a, b) => {
+      for (let l = 0; l < maxDepth; l++) {
+        const va = (rows[a][l] || '');
+        const vb = (rows[b][l] || '');
+        const cmp = naturalCompare(va, vb);
+        if (cmp !== 0) return cmp;
+      }
+      return 0;
+    });
+    return { indices, rows, maxDepth };
+  }
+
+  const sortInfo = hierarchicalSort(uniqueLabels);
+  const order = sortInfo.indices;
+  uniqueLabels = order.map(i => uniqueLabels[i]);
+  const sortedRows = order.map(i => sortInfo.rows[i]);
+  const maxDepth = sortInfo.maxDepth;
+  const sortedMerged = mergedWeekData.map(warr => order.map(i => warr[i]));
+
+  // ------------------ 3) 递归分组 ------------------
+  function makeNode(start, end, label) { return { start, end, label, children: [] }; }
+
+  function buildHierarchy(rows) {
+    function build(level, s, e) {
+      const nodes = [];
+      if (level >= rows[0].length) return nodes;
+      let i = s;
+      while (i <= e) {
+        const val = rows[i][level];
+        let j = i + 1;
+        while (j <= e && rows[j][level] === val) j++;
+        const node = makeNode(i, j - 1, val === '' ? '' : val);
+        node.children = build(level + 1, i, j - 1);
+        nodes.push(node);
+        i = j;
+      }
+      return nodes;
+    }
+    return build(0, 0, rows.length - 1);
+  }
+
+  const rootGroups = buildHierarchy(sortedRows);
+
+  function collectGroupsByLevel(rootNodes, depth) {
+    const out = Array.from({ length: depth }, () => []);
+    function dfs(nodes, level) {
+      for (const n of nodes) {
+        out[level].push({ start: n.start, end: n.end, label: n.label });
+        if (n.children && n.children.length) dfs(n.children, level + 1);
+      }
+    }
+    dfs(rootNodes, 0);
+    return out;
+  }
+
+  const groupsPerLevel = collectGroupsByLevel(rootGroups, maxDepth);
+
+  // ------------------ 4) 找出每个位置的“变化层级”用于分割线 ------------------
+  function getSplitLinesAtEachPosition() {
+    const splitAt = Array(uniqueLabels.length + 1).fill(null); // index 0 to n
+    splitAt[0] = maxDepth; // 左边界
+    splitAt[uniqueLabels.length] = maxDepth; // 右边界
+
+    function markChange(pos, level) {
+      if (splitAt[pos] === null || level < splitAt[pos]) {
+        splitAt[pos] = level;
+      }
+    }
+
+    function traverse(nodes, level) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        // 左边界
+        markChange(node.start, level);
+        // 右边界
+        markChange(node.end + 1, level);
+        if (node.children.length > 0) {
+          traverse(node.children, level + 1);
+        } else {
+          // 叶子节点：每个柱子之间也需分割（最细层）
+          for (let p = node.start; p < node.end; p++) {
+            markChange(p + 1, maxDepth);
+          }
+        }
+      }
+    }
+    traverse(rootGroups, 0);
+    return splitAt;
+  }
+
+  const splitLines = getSplitLinesAtEachPosition();
+
+  // ------------------ 5) ECharts 初始化 ------------------
+  const chart = echarts.init(document.getElementById('main'));
+
+  const palette = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4','#5ab1ef'];
+  const series = weeks.map((wk, widx) => ({
+    name: wk,
+    type: 'bar',
+    data: sortedMerged[widx],
+    itemStyle: { color: palette[widx % palette.length] },
+    barMaxWidth: 28,
+    emphasis: { focus: 'series' }
+  }));
+
+  const reservedAreaHeight = maxDepth * gapBetweenAxes + extraBottomPadding;
+  const grid = Object.assign({}, gridBase, { bottom: gridBase.bottom + reservedAreaHeight });
+
+  const option = {
+    title: { text: raw.title, left: 'center' },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: function(params) {
+        if (!params || !params.length) return '';
+        const idx = params[0].dataIndex;
+        const fullLabel = uniqueLabels[idx];
+        let html = `<div style="white-space:nowrap;"><b>${fullLabel}</b><br/>`;
+        params.forEach(p => {
+          html += `<span style="display:inline-block;width:10px;height:10px;background:${p.color};margin-right:6px;border-radius:2px;vertical-align:middle;"></span>${p.seriesName}: ${p.data}<br/>`;
+        });
+        html += '</div>';
+        return html;
+      }
+    },
+    legend: { top: 36, right: grid.right - 10 },
+    grid: { left: grid.left, right: grid.right, top: grid.top, bottom: grid.bottom },
+    xAxis: [{
+      type: 'category',
+      data: uniqueLabels.map((_, i) => i.toString()),
+      axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }
+    }],
+    yAxis: [{ type: 'value', name: raw.yLabel }],
+    series: series,
+    graphic: []
+  };
+
+  chart.setOption(option);
+
+  // ------------------ 6) 渲染：背景带 + 居中标签 + 动态分割线 ------------------
+  function renderAll() {
+    const w = chart.getWidth(), h = chart.getHeight();
+    const left = grid.left, right = grid.right, top = grid.top, bottom = grid.bottom;
+    const innerW = w - left - right;
+    const n = uniqueLabels.length;
+    const catW = n > 0 ? innerW / n : innerW;
+
+    const gfx = [];
+
+    // 背景色：从下到上逐渐变浅（深灰 → 浅灰）
+    const baseGrays = ['#f5f5f5', '#f9f9f9', '#fcfcfc', '#fefefe'];
+    const bgColors = Array.from({ length: maxDepth }, (_, i) => baseGrays[i % baseGrays.length]);
+
+    const reservedTop = h - bottom;
+    const textHeight = labelFontSize + 4;
+
+    // === 1. 绘制背景带 + 居中标签 ===
+    for (let level = 0; level < maxDepth; level++) {
+      const groups = groupsPerLevel[level];
+      const bgColor = bgColors[level];
+      const bandTop = Math.round(reservedTop + ((maxDepth - 1 - level) * gapBetweenAxes) + 6);
+      const bandHeight = gapBetweenAxes - 8;
+
+      for (const g of groups) {
+        const lbl = g.label || '';
+        const x = left + g.start * catW;
+        const width = (g.end - g.start + 1) * catW;
+
+        // 背景
+        gfx.push({
+          type: 'rect', z: 1,
+          shape: { x, y: bandTop, width, height: bandHeight },
+          style: { fill: bgColor, stroke: '#e6e6e6', lineWidth: 1 },
+          silent: true
+        });
+
+        // 居中文字
+        if (lbl) {
+          gfx.push({
+            type: 'text', z: 2,
+            style: {
+              x: x + width / 2,
+              y: bandTop + bandHeight / 2,
+              text: lbl,
+              textAlign: 'center',
+              textVerticalAlign: 'middle',
+              fill: '#222',
+              font: `${labelFontSize}px sans-serif`
+            },
+            silent: true
+          });
+        }
+      }
+    }
+
+    // === 2. 绘制动态分割线（只到变化层级） ===
+    const lineTopY = top - 6;
+    const lineBottomY = h - 6;
+
+    for (let pos = 0; pos <= n; pos++) {
+      const changeLevel = splitLines[pos];
+      if (changeLevel === null) continue;
+
+      const x = left + pos * catW;
+      const lineEndY = reservedTop + ((maxDepth - changeLevel) * gapBetweenAxes);
+
+      gfx.push({
+        type: 'line', z: 3,
+        shape: { x1: x, y1: lineTopY, x2: x, y2: lineEndY },
+        style: { stroke: '#ccc', lineWidth: 1 },
+        silent: true
+      });
+    }
+
+    chart.setOption({ graphic: gfx }, { notMerge: true });
+  }
+
+  renderAll();
+  window.addEventListener('resize', () => {
+    chart.resize();
+    setTimeout(renderAll, 120);
+  });
+
+  // Expose for debugging
+  window.__multiResult = { uniqueLabels, mergedWeekData: sortedMerged, groupsPerLevel, splitLines, chart };
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>多层级分组柱状图 - ECharts</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <style>
+    body {margin:0;padding:20px;background:#fafafa;font-family:Arial;}
+    #chart {width:100%;height:680px;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.1);}
+  </style>
+</head>
+<body>
+  <div id="chart"></div>
+
+  <script>
+    // ====================== 1. 数据 ======================
+    const rawLabels = [
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-30",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QHDX01.400G_BASE_VR4_QSFP112.TRILIGHT.2025-42",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-40",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-41",
+      "ROCE-TOR下联-QHDX03.400G_AOC_QSFP112.SONT.2025-42",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-41",
+      "ROCE-TOR下联-QYYD05.400G_BASE_SR4_QSFPDD.TRILIGHT.2025-42",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-39",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-40",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-41",
+      "ROCE-TOR下联-QYYD05.AOC_QSFPDD.Crealights.2025-42",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-39",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-40",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-41",
+      "ROCE-TOR下联-QYYD06.400G_AOC_QSFP112.SONT.2025-42",
+      "ROCE-TOR下联-QYZNJ01.400G_AOC_QSFP112.Crealights.2025-41",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-39",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-40",
+      "ROCE-TOR下联-QYZNJ01.400G_BASE_SR4_QSFP112.TRILIGHT.2025-42",
+      "SROCE-TOR下联-QYZNJ01.AOC_QSFPDD.Crealights.2025-40"
+    ];
+
+    const values = [0,0,2,0,1,1,0,0,0,3,0,0,7,0,0,0,4,1,1,1,1,2,3,1,1];
+
+    // ====================== 2. 建树 ======================
+    const root = {name:'', children:[], start:0, end:0};
+    rawLabels.forEach((lbl,i)=>{
+      const parts = lbl.split('.');
+      let cur = root;
+      parts.forEach(p=>{
+        let child = cur.children.find(c=>c.name===p);
+        if(!child){
+          child = {name:p, children:[], start:i, end:i};
+          cur.children.push(child);
+        }
+        child.end = i;
+        cur = child;
+      });
+    });
+
+    // ====================== 3. 收集所有层级标签 ======================
+    const levelInfo = [];   // {text, level, start, end}
+    function walk(node, lvl){
+      if(node.children.length>0 && node.name){
+        levelInfo.push({text:node.name, level:lvl, start:node.start, end:node.end});
+      }
+      node.children.forEach(ch=>walk(ch, lvl+1));
+    }
+    walk(root,0);
+
+    // ====================== 4. ECharts ======================
+    const dom = document.getElementById('chart');
+    const myChart = echarts.init(dom);
+
+    // 初始 graphic（只放 style，位置后面动态算）
+    const graphic = levelInfo.map(item=>({
+      type:'text',
+      left:'center',
+      top:80 + item.level*20,
+      style:{
+        text:item.text,
+        font: item.level===0 ? 'bold 12px Arial' : '11px Arial',
+        fill: item.level===0 ? '#000' : '#555',
+        textAlign:'center'
+      },
+      z:100
+    }));
+
+    myChart.setOption({
+      title:{
+        text:'2025年10月各集群AOC故障数按型号、厂商、周分布',
+        left:'center',
+        textStyle:{fontSize:16,fontWeight:'bold'}
+      },
+      tooltip:{
+        trigger:'axis',
+        formatter:p=>{
+          const idx = p[0].dataIndex;
+          return rawLabels[idx].replace(/\./g,' → ') + '<br/>故障数: '+values[idx];
+        }
+      },
+      grid:{top:80,bottom:150,left:60,right:20},
+      xAxis:{
+        type:'category',
+        data:rawLabels,
+        axisLabel:{show:false},
+        axisTick:{show:false}
+      },
+      yAxis:{
+        type:'value',
+        name:'故障数',
+        nameLocation:'middle',
+        nameGap:50
+      },
+      series:[{
+        type:'bar',
+        data:values.map(v=>({value:v, itemStyle:{color:'#3366cc'}})),
+        barWidth:18,
+        itemStyle:{borderRadius:[2,2,0,0]}
+      }],
+      graphic: graphic
+    });
+
+    // ====================== 5. 动态定位 ======================
+    const updatePos = ()=>{
+      const updates = levelInfo.map(item=>{
+        const centerIdx = (item.start + item.end)/2;
+        const px = myChart.convertToPixel('grid', centerIdx);
+        return {position:[px, 80 + item.level*20]};
+      });
+      myChart.setOption({graphic:updates});
+    };
+    myChart.getZr().on('rendered', updatePos);
+    window.addEventListener('resize', updatePos);
+  </script>
+</body>
+</html><!DOCTYPE html>
