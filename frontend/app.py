@@ -167,15 +167,14 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                             "labels": cfg["data"]["labels"],
                             "values": [{"label": ds["label"], "data": ds["data"]} for ds in cfg["data"]["datasets"]]
                         }
-                    # html = render_hierarchical_bar(raw_viz, height=900)
-                    # components.html(html, height=900, scrolling=True)
-                    html = render_hierarchical_bar(raw_viz, height=700)  # 高度 600px，清晰不占屏
+                    # 调用新版 render_hierarchical_bar，取得 html 与计算高度
+                    html, computed_height = render_hierarchical_bar(raw_viz, height=700)
+                    # 不传固定宽度，交由 Streamlit 容器自适应（配合 st.set_page_config(layout="wide")）
                     components.html(
                         html,
-                        height=700,
-                        width=1400,        # 强制宽度 1400px（可根据屏幕调）
-                        scrolling=False    # 关闭滚动条，图表自适应
-                        # component_iframe_attrs={"style": "width: 100% !important; min-width: 2000px;"}
+                        height=computed_height,
+                        width=1600,
+                        scrolling=True   # 打开滚动以保证在高度/宽度超出时仍然可访问
                     )
                     
                 else:
