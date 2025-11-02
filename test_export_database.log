@@ -520,3 +520,12 @@
 2025-10-23 10:18:42,079 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块+AOC）故障表
 2025-10-23 10:18:42,315 - __main__ - INFO - Exported table ROCE-TOR下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251023_101841.xlsx
 2025-10-23 10:18:43,367 - __main__ - INFO - Database exported to output\database_export_20251023_101841.xlsx (status=0)
+2025-10-31 14:11:15,273 - __main__ - DEBUG - Output directory ensured: output
+2025-10-31 14:11:15,275 - __main__ - INFO - Found 2 tables in real_database.db: ['光模块在线总数量统计表', 'ROCE-TOR下联-网络零件（光模块+AOC）故障表']
+2025-10-31 14:11:16,245 - __main__ - DEBUG - Columns in table 光模块在线总数量统计表: ['光模块型号', '光模块厂商', '状态', '机房', '集群', '客户', '在线总数量']
+2025-10-31 14:11:16,272 - __main__ - DEBUG - Read 1283 rows from table 光模块在线总数量统计表
+2025-10-31 14:11:16,416 - __main__ - INFO - Exported table 光模块在线总数量统计表 to sheet in output\database_export_20251031_141115.xlsx
+2025-10-31 14:11:16,417 - __main__ - DEBUG - Columns in table ROCE-TOR下联-网络零件（光模块+AOC）故障表: ['事件ID', '事件名称', '产生时间', '交换机名称', '交换机端口名称', '机房', '网络零件种类', '网络零件厂商', '网络零件型号', '网络零件SN', '集群', '客户信息', '外包单号', '事件完成时间', '事件描述']
+2025-10-31 14:11:16,442 - __main__ - DEBUG - Read 1044 rows from table ROCE-TOR下联-网络零件（光模块+AOC）故障表
+2025-10-31 14:11:16,943 - __main__ - INFO - Exported table ROCE-TOR下联-网络零件（光模块+AOC）故障表 to sheet in output\database_export_20251031_141115.xlsx
+2025-10-31 14:11:19,579 - __main__ - INFO - Database exported to output\database_export_20251031_141115.xlsx (status=0)
