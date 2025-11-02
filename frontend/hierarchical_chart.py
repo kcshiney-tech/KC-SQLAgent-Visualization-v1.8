@@ -12,6 +12,9 @@ import json
 import uuid
 import re
 import logging
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +375,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="/static/js/echarts.min.js"></script>
   <script>
   (function(){
     const raw = __RAW_JSON__;

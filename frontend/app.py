@@ -11,6 +11,8 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import uuid
 import pandas as pd
+import uuid
+import pandas as pd
 import json
 import time
 from backend.sql_agent import build_graph, process_query
@@ -284,8 +286,8 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                 chart_id = f"chart_{uuid.uuid4().hex}"
                 html = f"""
                 <!DOCTYPE html><html><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.js"></script>
-                <script src="https://cdn.jsdelivr.net/npm/@kurkle/color@0.3.2/dist/color.umd.min.js"></script>
+                <script src="/static/js/chart.umd.js"></script>
+                <script src="/static/js/color.min.js"></script>
                 </head><body>
                 <div style="width:100%; height:480px; overflow:auto;">
                   <canvas id="{chart_id}"></canvas>
