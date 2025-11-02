@@ -435,13 +435,13 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
         if not formatted_data or viz_type == "none":
             logger.debug("No formatted data or viz_type is none, returning empty config")
             return {}
-        
+
         colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"] * 10
         title = formatted_data.get("title", "Chart")
-        
-        # 基础配置
+
+        # default config; type will be corrected below depending on viz_type
         config = {
-            "type": "bar",  # 统一使用 bar 类型
+            "type": "bar",
             "data": {},
             "options": {
                 "responsive": True,
@@ -453,10 +453,11 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
             }
         }
 
+        # BAR-like charts
         if viz_type in ["bar", "horizontal_bar", "hierarchical_bar"]:
             labels = formatted_data.get("labels", [])
             values = formatted_data.get("values", [])
-            
+
             datasets = [
                 {
                     "label": v["label"],
@@ -466,44 +467,39 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
                     "borderWidth": 1
                 } for i, v in enumerate(values)
             ]
-            
+
             config["data"] = {"labels": labels, "datasets": datasets}
-            
-            # 简化坐标轴配置
+
             scales_config = {
                 "x": {
                     "title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")},
-                    "ticks": {
-                        "maxRotation": 90,
-                        "minRotation": 45,
-                        "autoSkip": False
-                    }
+                    "ticks": {"maxRotation": 90, "minRotation": 45, "autoSkip": False}
                 },
                 "y": {
                     "beginAtZero": True,
                     "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}
                 }
             }
-            
-            # 只有确认层级插件可用时才使用层级坐标轴
+
             if viz_type == "hierarchical_bar":
                 scales_config["x"]["type"] = "category"
                 scales_config["x"]["_hierarchical"] = {
-                "separator": formatted_data.get("hierarchical_separator", "."),
-                "levelPadding": formatted_data.get("hierarchical_levelPadding", 20),
-                "offset": formatted_data.get("hierarchical_offset", True),
-                "collapse": formatted_data.get("hierarchical_collapse", False)
-    }
+                    "separator": formatted_data.get("hierarchical_separator", "."),
+                    "levelPadding": formatted_data.get("hierarchical_levelPadding", 20),
+                    "offset": formatted_data.get("hierarchical_offset", True),
+                    "collapse": formatted_data.get("hierarchical_collapse", False)
+                }
 
             if viz_type == "horizontal_bar":
                 config["options"]["indexAxis"] = "y"
-                # 交换 x 和 y 轴的配置
                 scales_config["x"], scales_config["y"] = scales_config["y"], scales_config["x"]
-            
+
             config["options"]["scales"] = scales_config
+            config["type"] = "bar" if viz_type != "horizontal_bar" else "bar"
 
-
+        # LINE
         elif viz_type == "line":
+            config["type"] = "line"
             config["data"] = {
                 "labels": formatted_data.get("xValues", []),
                 "datasets": [
@@ -520,36 +516,33 @@ def build_chart_config(viz_type: str, formatted_data: Dict) -> Dict:
                 "y": {"beginAtZero": True, "title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
             }
 
+        # PIE (关键：必须把 type 设为 'pie')
         elif viz_type == "pie":
             data_list = formatted_data.get("data", [])
-            labels = [d["label"] if d["label"] is not None else "Unknown" for d in data_list]
-            values = [round(float(d["value"]), 2) if d["value"] is not None else 0.0 for d in data_list]
+            labels = [d.get("label") if d.get("label") is not None else "Unknown" for d in data_list]
+            values = [round(float(d.get("value", 0)), 2) if d.get("value") is not None else 0.0 for d in data_list]
+            bg = colors[:len(values)]
+            config["type"] = "pie"
             config["data"] = {
                 "labels": labels,
-                "datasets": [{"data": values, "backgroundColor": colors[:len(values)]}]
+                "datasets": [{"data": values, "backgroundColor": bg}]
             }
+            # keep legend shown
             config["options"]["plugins"]["legend"]["display"] = True
 
-        elif viz_type == "scatter":
-            series = formatted_data.get("series", [])
-            datasets = [
-                {
-                    "label": s["label"],
-                    "data": [{"x": float(d["x"]) if d["x"] is not None else 0.0, "y": float(d["y"]) if d["y"] is not None else 0.0, "id": d["id"]} for d in s["data"]],
-                    "backgroundColor": colors[i % len(colors)]
-                } for i, s in enumerate(series)
-            ]
-            config["data"] = {"datasets": datasets}
-            config["options"]["scales"] = {
-                "x": {"title": {"display": True, "text": formatted_data.get("xLabel", "X Axis")}},
-                "y": {"title": {"display": True, "text": formatted_data.get("yLabel", "Y Axis")}}
-            }
+        else:
+            # fallback: try to synthesize minimal chart with whatever arrays exist
+            config["type"] = formatted_data.get("type", "bar")
+            if "labels" in formatted_data and "values" in formatted_data:
+                config["data"] = {"labels": formatted_data["labels"], "datasets": formatted_data.get("values", [])}
+            elif "xValues" in formatted_data and "yValues" in formatted_data:
+                config["data"] = {
+                    "labels": formatted_data.get("xValues", []),
+                    "datasets": [{"label": v.get("label", ""), "data": v.get("data", [])} for v in formatted_data.get("yValues", [])]
+                }
 
-        # <<<=== 新增：附带原始 LLM JSON
-        config["raw_data"] = formatted_data
-
-        logger.info(f"Built chart config for {viz_type}: {config}")
         return config
+
     except Exception as e:
-        logger.error(f"Failed to build chart config: {traceback.format_exc()}")
-        return {"raw_data": formatted_data}  # 即使出错也保留原始数据
+        logger.error(f"build_chart_config failed: {traceback.format_exc()}")
+        return {}
