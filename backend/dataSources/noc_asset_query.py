@@ -128,51 +128,6 @@ def query_cable_assets(batch_query: str) -> Dict[str, Any]:
         batch_query=batch_query
     )
 
-def query_ip_networks(idc_id: int = 1867, start: int = 0, length: int = 1000) -> Dict[str, Any]:
-    """
-    查询IP网络信息
-    
-    Args:
-        idc_id (int): 机房ID，默认为1867
-        start (int): 起始位置，默认为0
-        length (int): 数据长度，默认为1000
-        
-    Returns:
-        Dict[str, Any]: API响应结果
-    """
-    # 请求数据
-    payload = {
-        "tablename": "network_section",
-        "header": "id,name,mask,gateway,parent,belong_type_,belong_,type_,status_id_,isp,charger,usage,remark,idc",
-        "start": start,
-        "length": length,
-        "conditions": {
-            "idc_id": idc_id
-        }
-    }
-    
-    try:
-        logger.info(f"发送IP网络信息API请求，机房ID: {idc_id}...")
-        response = requests.post(FULL_URL, headers=HEADERS, data=json.dumps(payload))
-        
-        # 检查响应状态
-        response.raise_for_status()
-        
-        # 解析JSON响应
-        result = response.json()
-        logger.info(f"IP网络信息API请求成功，机房ID: {idc_id}，返回 {len(result.get('data', []))} 条记录")
-        return result
-        
-    except requests.exceptions.RequestException as e:
-        logger.error(f"IP网络信息API请求失败，机房ID: {idc_id} - {e}")
-        return {"error": str(e)}
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON解析失败，机房ID: {idc_id} - {e}")
-        return {"error": f"JSON解析失败: {e}"}
-    except Exception as e:
-        logger.error(f"未知错误，机房ID: {idc_id} - {e}")
-        return {"error": str(e)}
-
 
 def fetch_ip_networks_full(idc_id: int = 1867, page_length: int = 1000, max_workers: int = 8) -> List[Dict[str, Any]]:
     """

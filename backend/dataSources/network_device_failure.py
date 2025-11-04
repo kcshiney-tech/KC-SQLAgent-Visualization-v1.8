@@ -24,8 +24,8 @@ def query_network_device_failure():
     event_monitor_mongo_host = "10.69.74.235"
     event_monitor_mongo_port  = 8526
     event_monitor_mongo_db    = "network_event"
-    event_monitor_mongo_user  = "network_event_ro_test"
-    event_monitor_mongo_pass  = "Ro123456"
+    event_monitor_mongo_user  = "network_event_ro_user_sysnet"
+    event_monitor_mongo_pass  = "rosysnet5678"
 
     # 连接数据库
     if not connect_mongodb(host=event_monitor_mongo_host, port=event_monitor_mongo_port,

@@ -167,148 +167,178 @@ def stream_response(result: dict, status_placeholder, answer_placeholder, chart_
                         }
                     html, computed_height = render_hierarchical_bar(raw_viz, height=700)
                     components.html(html, height=computed_height, width=1600, scrolling=True)
-                    return
+                    result["viz"] = None
 
-                # --- for other charts, prefer the viz_type from result (fix pie case) ---
-                # attempt to get a normal chart config from viz_data (raw_data preferred)
-                data_in = viz_data.get("raw_data") if isinstance(viz_data, dict) and "raw_data" in viz_data else viz_data
 
                 # If result says "pie", force build proper pie config from common input shapes
-                if viz_type == "pie":
-                    # three common shapes:
-                    # A) { "data": [ {"label": "...", "value": N}, ... ] }
-                    # B) chartjs-like: { "type":"pie", "data": {"labels": [...], "datasets":[{"data":[...]}] } }
-                    # C) simplified: { "labels":[...], "values":[...] } or { "labels": [...], "values":[{"label","value"}] }
-                    labels = []
-                    values = []
-                    if isinstance(data_in, dict) and isinstance(data_in.get("data"), list) and all(isinstance(x, dict) and "label" in x and "value" in x for x in data_in["data"]):
-                        labels = [str(x["label"]) for x in data_in["data"]]
-                        values = [float(x["value"]) for x in data_in["data"]]
-                    elif isinstance(data_in, dict) and isinstance(data_in.get("data"), dict):
-                        d = data_in["data"]
-                        if "labels" in d and "datasets" in d and isinstance(d["datasets"], list) and len(d["datasets"])>0:
-                            labels = d.get("labels", [])
-                            values = d["datasets"][0].get("data", [])
-                    elif isinstance(data_in, dict) and "data" in data_in and isinstance(data_in["data"], list):
-                        # fallback: possibly list of {"label","value"}
-                        arr = data_in["data"]
-                        if all(isinstance(x, dict) and "label" in x and ("value" in x or "data" in x) for x in arr):
-                            labels = [str(x.get("label")) for x in arr]
-                            values = [float(x.get("value", x.get("data", 0))) for x in arr]
-                    elif isinstance(data_in, dict) and "labels" in data_in and "values" in data_in:
-                        if all(isinstance(x, (int,float)) for x in data_in["values"]):
-                            labels = data_in["labels"]
-                            values = data_in["values"]
-                        elif all(isinstance(x, dict) and ("value" in x or "data" in x) for x in data_in["values"]):
-                            labels = [x.get("label") for x in data_in["values"]]
-                            values = [float(x.get("value", x.get("data", 0))) for x in data_in["values"]]
-
-                    labels = labels or []
-                    values = values or []
-
-                    # default color palette
-                    colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"]
-                    bg = [colors[i % len(colors)] for i in range(len(values))]
-
-                    chart_cfg = {
-                        "type": "pie",
-                        "data": {"labels": labels, "datasets": [{"data": values, "backgroundColor": bg}]},
-                        "options": {
-                            "responsive": True,
-                            "maintainAspectRatio": False,
-                            "plugins": {"title": {"display": True, "text": viz_data.get("title", "")}, "legend": {"display": True, "position": "top"}}
-                        },
-                        "raw_data": viz_data
-                    }
-
-                else:
-                    # existing synthesis logic for non-pie charts (reuse your previous branch)
-                    is_chartjs_cfg = isinstance(data_in, dict) and isinstance(data_in.get("data"), dict) and ("datasets" in data_in["data"] or "labels" in data_in["data"])
-                    if is_chartjs_cfg:
-                        chart_cfg = data_in.copy()
-                    else:
-                        chart_type = viz_type if isinstance(viz_type, str) and viz_type else data_in.get("type", "line")
-                        labels = None
-                        datasets = []
-
-                        if isinstance(data_in, dict) and "xValues" in data_in and "yValues" in data_in:
-                            labels = data_in.get("xValues", [])
-                            raw_series = data_in.get("yValues", [])
-                            for i, s in enumerate(raw_series):
-                                lab = s.get("label", f"series_{i}")
-                                series_data = s.get("data", [])
-                                ds = {"label": lab, "data": series_data, "fill": False}
-                                if isinstance(s.get("color"), str):
-                                    ds["borderColor"] = s["color"]
-                                datasets.append(ds)
+                # if result.get("viz") and viz_type != "hierarchical_bar":
+                if viz_type != "hierarchical_bar" and viz_data:  # 移除对result.get("viz")的依赖，直接检查图表类型和数据
+                    # --- for other charts, prefer the viz_type from result (fix pie case) ---
+                    # attempt to get a normal chart config from viz_data (raw_data preferred)
+                    data_in = viz_data.get("raw_data") if isinstance(viz_data, dict) and "raw_data" in viz_data else viz_data
+                    if viz_type == "pie":
+                        # three common shapes:
+                        # A) { "data": [ {"label": "...", "value": N}, ... ] }
+                        # B) chartjs-like: { "type":"pie", "data": {"labels": [...], "datasets":[{"data":[...]}] } }
+                        # C) simplified: { "labels":[...], "values":[...] } or { "labels": [...], "values":[{"label","value"}] }
+                        labels = []
+                        values = []
+                        if isinstance(data_in, dict) and isinstance(data_in.get("data"), list) and all(isinstance(x, dict) and "label" in x and "value" in x for x in data_in["data"]):
+                            labels = [str(x["label"]) for x in data_in["data"]]
+                            values = [float(x["value"]) for x in data_in["data"]]
+                        elif isinstance(data_in, dict) and isinstance(data_in.get("data"), dict):
+                            d = data_in["data"]
+                            if "labels" in d and "datasets" in d and isinstance(d["datasets"], list) and len(d["datasets"])>0:
+                                labels = d.get("labels", [])
+                                values = d["datasets"][0].get("data", [])
+                        elif isinstance(data_in, dict) and "data" in data_in and isinstance(data_in["data"], list):
+                            # fallback: possibly list of {"label","value"}
+                            arr = data_in["data"]
+                            if all(isinstance(x, dict) and "label" in x and ("value" in x or "data" in x) for x in arr):
+                                labels = [str(x.get("label")) for x in arr]
+                                values = [float(x.get("value", x.get("data", 0))) for x in arr]
                         elif isinstance(data_in, dict) and "labels" in data_in and "values" in data_in:
-                            labels = data_in.get("labels", [])
-                            vals = data_in.get("values", [])
-                            if len(vals) > 0 and isinstance(vals[0], dict) and "data" in vals[0]:
-                                for v in vals:
-                                    ds = {"label": v.get("label", ""), "data": v.get("data", []), "fill": False}
-                                    if v.get("borderColor"):
-                                        ds["borderColor"] = v.get("borderColor")
-                                    datasets.append(ds)
-                            else:
-                                datasets.append({"label": data_in.get("yLabel", "value"), "data": vals, "fill": False})
-                        elif isinstance(data_in, dict) and isinstance(data_in.get("data"), dict) and ("labels" in data_in["data"] or "datasets" in data_in["data"]):
+                            if all(isinstance(x, (int,float)) for x in data_in["values"]):
+                                labels = data_in["labels"]
+                                values = data_in["values"]
+                            elif all(isinstance(x, dict) and ("value" in x or "data" in x) for x in data_in["values"]):
+                                labels = [x.get("label") for x in data_in["values"]]
+                                values = [float(x.get("value", x.get("data", 0))) for x in data_in["values"]]
+
+                        labels = labels or []
+                        values = values or []
+
+                        # default color palette
+                        colors = ["#36A2EB", "#FF6384", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#66FF66", "#999999"]
+                        bg = [colors[i % len(colors)] for i in range(len(values))]
+
+                        chart_cfg = {
+                            "type": "pie",
+                            "data": {"labels": labels, "datasets": [{"data": values, "backgroundColor": bg}]},
+                            "options": {
+                                "responsive": True,
+                                "maintainAspectRatio": False,
+                                "plugins": {"title": {"display": True, "text": viz_data.get("title", "")}, "legend": {"display": True, "position": "top"}}
+                            },
+                            "raw_data": viz_data
+                        }
+
+                    else:
+                        # existing synthesis logic for non-pie charts (reuse your previous branch)
+                        is_chartjs_cfg = isinstance(data_in, dict) and isinstance(data_in.get("data"), dict) and ("datasets" in data_in["data"] or "labels" in data_in["data"])
+                        if is_chartjs_cfg:
                             chart_cfg = data_in.copy()
                         else:
-                            maybe_labels = data_in.get("x") or data_in.get("labels") or data_in.get("xValues")
-                            maybe_vals = data_in.get("y") or data_in.get("values") or data_in.get("yValues")
-                            if maybe_labels and maybe_vals:
-                                labels = maybe_labels
-                                if len(maybe_vals) > 0 and isinstance(maybe_vals[0], dict) and "data" in maybe_vals[0]:
-                                    for v in maybe_vals:
-                                        datasets.append({"label": v.get("label", ""), "data": v.get("data", []), "fill": False})
-                                elif isinstance(maybe_vals, list) and all(isinstance(x, (int, float)) for x in maybe_vals):
-                                    datasets.append({"label": data_in.get("yLabel", "value"), "data": maybe_vals, "fill": False})
+                            chart_type = viz_type if isinstance(viz_type, str) and viz_type else data_in.get("type", "line")
+                            labels = None
+                            datasets = []
 
-                        if 'chart_cfg' not in locals():
-                            chart_cfg = {
-                                "type": chart_type or "line",
-                                "data": {"labels": labels or [], "datasets": datasets},
-                                "options": {
-                                    "responsive": True,
-                                    "maintainAspectRatio": False,
-                                    "plugins": {"title": {"display": True, "text": data_in.get("title", "") if isinstance(data_in, dict) else ""}}
+                            if isinstance(data_in, dict) and "xValues" in data_in and "yValues" in data_in:
+                                labels = data_in.get("xValues", [])
+                                raw_series = data_in.get("yValues", [])
+                                for i, s in enumerate(raw_series):
+                                    lab = s.get("label", f"series_{i}")
+                                    series_data = s.get("data", [])
+                                    ds = {"label": lab, "data": series_data, "fill": False}
+                                    if isinstance(s.get("color"), str):
+                                        ds["borderColor"] = s["color"]
+                                    datasets.append(ds)
+                            elif isinstance(data_in, dict) and "labels" in data_in and "values" in data_in:
+                                labels = data_in.get("labels", [])
+                                vals = data_in.get("values", [])
+                                if len(vals) > 0 and isinstance(vals[0], dict) and "data" in vals[0]:
+                                    for v in vals:
+                                        ds = {"label": v.get("label", ""), "data": v.get("data", []), "fill": False}
+                                        if v.get("borderColor"):
+                                            ds["borderColor"] = v.get("borderColor")
+                                        datasets.append(ds)
+                                else:
+                                    datasets.append({"label": data_in.get("yLabel", "value"), "data": vals, "fill": False})
+                            elif isinstance(data_in, dict) and isinstance(data_in.get("data"), dict) and ("labels" in data_in["data"] or "datasets" in data_in["data"]):
+                                chart_cfg = data_in.copy()
+                            else:
+                                maybe_labels = data_in.get("x") or data_in.get("labels") or data_in.get("xValues")
+                                maybe_vals = data_in.get("y") or data_in.get("values") or data_in.get("yValues")
+                                if maybe_labels and maybe_vals:
+                                    labels = maybe_labels
+                                    if len(maybe_vals) > 0 and isinstance(maybe_vals[0], dict) and "data" in maybe_vals[0]:
+                                        for v in maybe_vals:
+                                            datasets.append({"label": v.get("label", ""), "data": v.get("data", []), "fill": False})
+                                    elif isinstance(maybe_vals, list) and all(isinstance(x, (int, float)) for x in maybe_vals):
+                                        datasets.append({"label": data_in.get("yLabel", "value"), "data": maybe_vals, "fill": False})
+
+                            if 'chart_cfg' not in locals():
+                                chart_cfg = {
+                                    "type": chart_type or "line",
+                                    "data": {"labels": labels or [], "datasets": datasets},
+                                    "options": {
+                                        "responsive": True,
+                                        "maintainAspectRatio": False,
+                                        "plugins": {"title": {"display": True, "text": data_in.get("title", "") if isinstance(data_in, dict) else ""}}
+                                    }
                                 }
-                            }
-                            # add default scales for common charts
-                            chart_cfg["options"]["scales"] = {
-                                "x": {"title": {"display": bool(data_in.get("xLabel") if isinstance(data_in, dict) else False), "text": data_in.get("xLabel", "") if isinstance(data_in, dict) else ""}},
-                                "y": {"beginAtZero": True, "title": {"display": bool(data_in.get("yLabel") if isinstance(data_in, dict) else False), "text": data_in.get("yLabel", "") if isinstance(data_in, dict) else ""}}
-                            }
+                                # add default scales for common charts
+                                chart_cfg["options"]["scales"] = {
+                                    "x": {"title": {"display": bool(data_in.get("xLabel") if isinstance(data_in, dict) else False), "text": data_in.get("xLabel", "") if isinstance(data_in, dict) else ""}},
+                                    "y": {"beginAtZero": True, "title": {"display": bool(data_in.get("yLabel") if isinstance(data_in, dict) else False), "text": data_in.get("yLabel", "") if isinstance(data_in, dict) else ""}}
+                                }
 
-                # Finally: render chart_cfg via Chart.js in an iframe html (like before)
-                chart_json = json.dumps(chart_cfg, ensure_ascii=False)
-                chart_id = f"chart_{uuid.uuid4().hex}"
-                html = f"""
-                <!DOCTYPE html><html><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
-                <script src="/static/js/chart.umd.js"></script>
-                <script src="/static/js/color.min.js"></script>
-                </head><body>
-                <div style="width:100%; height:480px; overflow:auto;">
-                  <canvas id="{chart_id}"></canvas>
-                </div>
-                <script>
-                document.addEventListener('DOMContentLoaded', function () {{
-                  try {{
-                    var ctx = document.getElementById('{chart_id}').getContext('2d');
-                    var config = {chart_json};
-                    config.options = config.options || {{}};
-                    config.options.responsive = true;
-                    config.options.maintainAspectRatio = false;
-                    new Chart(ctx, config);
-                  }} catch (e) {{
-                    console.error('Chart creation error:', e);
-                  }}
-                }});
-                </script></body></html>
-                """
-                components.html(html, height=500, scrolling=False)
-                logger.debug("Viz data (backend only): %s", json.dumps(result.get("viz_data"), ensure_ascii=False)[:4000])
+                    # Finally: render chart_cfg via Chart.js in an iframe html (like before)
+                    chart_json = json.dumps(chart_cfg, ensure_ascii=False)
+                    chart_id = f"chart_{uuid.uuid4().hex}"
+                    # ----------------- 替换前的 chart HTML 生成处，改为内联 Chart.js & Color -----------------
+                    import pathlib
+
+                    # 计算 frontend/static/js 目录（以 app.py 所在目录为基准）
+                    _here = pathlib.Path(__file__).resolve()
+                    # 假设 app.py 在 frontend/ 目录下，则 parents[0] 即项目 frontend；调整 parents[n] 如有不同
+                    js_dir = _here.parent / "static" / "js"
+
+                    def _read_js_text(name):
+                        p = js_dir / name
+                        try:
+                            return p.read_text(encoding="utf-8")
+                        except Exception as e:
+                            # 若读不到文件，插入一段警告脚本，避免页面崩溃
+                            return f'console.warn("缺少本地JS文件: {name} - {e}");'
+
+                    chart_js_text = _read_js_text("chart.umd.js")
+                    color_js_text = _read_js_text("color.min.js")
+
+                    # 把 chart_js_text、color_js_text 内联到 iframe HTML 中
+                    chart_json = json.dumps(chart_cfg, ensure_ascii=False)
+                    chart_id = f"chart_{uuid.uuid4().hex}"
+
+                    html = f"""
+                    <!DOCTYPE html><html><head><meta charset='utf-8'/><meta name='viewport' content='width=device-width, initial-scale=1'/>
+                    <!-- inline color.min.js -->
+                    <script>
+                    {color_js_text}
+                    </script>
+                    <!-- inline chart.umd.js -->
+                    <script>
+                    {chart_js_text}
+                    </script>
+                    </head><body>
+                    <div style="width:100%; height:480px; overflow:auto;">
+                    <canvas id="{chart_id}"></canvas>
+                    </div>
+                    <script>
+                    document.addEventListener('DOMContentLoaded', function () {{
+                    try {{
+                        var ctx = document.getElementById('{chart_id}').getContext('2d');
+                        var config = {chart_json};
+                        config.options = config.options || {{}};
+                        config.options.responsive = true;
+                        config.options.maintainAspectRatio = false;
+                        new Chart(ctx, config);
+                    }} catch (e) {{
+                        console.error('Chart creation error:', e);
+                    }}
+                    }});</script></body></html>
+                    """
+                    components.html(html, height=500, scrolling=False)
+                    logger.debug("Viz data (backend only): %s", json.dumps(result.get("viz_data"), ensure_ascii=False)[:4000])
 
             except Exception as e:
                 st.error("抱歉，图表渲染失败，请稍后重试或联系支持。")

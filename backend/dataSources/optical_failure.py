@@ -89,11 +89,16 @@ def get_cluster_info(hostname: str, is_tor: bool = False, is_agg: bool = False) 
 # ==========================================
 def query_basicnet_event_demo():
     # 数据库连接配置
+    # basicnet_event_mongo_host = "10.69.74.235"
+    # basicnet_event_mongo_port  = 8526
+    # basicnet_event_mongo_db    = "alertpolicy"
+    # basicnet_event_mongo_user  = "network_event_ro_user_sysnet"
+    # basicnet_event_mongo_pass  = "rosysnet5678"
     basicnet_event_mongo_host = "10.69.74.235"
     basicnet_event_mongo_port  = 8526
     basicnet_event_mongo_db    = "alertpolicy"
-    basicnet_event_mongo_user  = "network_event_ro_test"
-    basicnet_event_mongo_pass  = "Ro123456"
+    basicnet_event_mongo_user  = "network_event_ro_user_sysnet"
+    basicnet_event_mongo_pass  = "rosysnet5678"
 
     # 连接数据库
     if not connect_mongodb(host=basicnet_event_mongo_host, port=basicnet_event_mongo_port,
@@ -200,8 +205,8 @@ def query_event_monitor_demo():
     event_monitor_mongo_host = "10.69.74.235"
     event_monitor_mongo_port  = 8526
     event_monitor_mongo_db    = "network_event"
-    event_monitor_mongo_user  = "network_event_ro_test"
-    event_monitor_mongo_pass  = "Ro123456"
+    event_monitor_mongo_user  = "network_event_ro_user_sysnet"
+    event_monitor_mongo_pass  = "rosysnet5678"
 
     # 连接数据库
     if not connect_mongodb(host=event_monitor_mongo_host, port=event_monitor_mongo_port,

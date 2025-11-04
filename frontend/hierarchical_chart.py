@@ -15,6 +15,11 @@ import logging
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pathlib 
+# 读取本地文件（选用绝对/相对路径，确保路径正确）
+base = pathlib.Path(__file__).resolve().parents[1] / "frontend" / "static" / "js"
+
+echarts_js = (base / "echarts.min.js").read_text(encoding="utf-8")
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +319,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
         order = sorted_info["indices"]
         sortedRows = sorted_info["rows"]
         maxDepth = sorted_info["maxDepth"]
+        maxDepth = max(maxDepth, 1)
 
         uniqLabels = [uniqLabels[i] for i in order]
         # merged: list of series arrays -> reorder每个 series 的列顺序
@@ -328,7 +334,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
         extraBottomPadding = 14
         gridBase = {"left": 70, "right": 40, "top": 80, "bottom": 80}
         min_height_per_level = 40
-        maxLabelLines = 2
+        maxLabelLines = 4
         reserved = maxDepth * min_height_per_level + extraBottomPadding + 60
         total_height = max(height, reserved + 120)
         grid = {**gridBase, "bottom": gridBase["bottom"] + reserved}
@@ -336,6 +342,61 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
         palette = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#5ab1ef']
 
         # HTML 模板（使用占位符替换，避免 {} 冲突）
+        # ------------------ 自动内联本地 JS（避免 /static 被 Streamlit 占用问题） ------------------
+        import pathlib
+        _here = pathlib.Path(__file__).resolve()
+
+        # 尝试若干候选目录，自动选择第一个存在的 js 目录
+        _candidate_dirs = [
+            _here.parent / "static" / "js",                       # if hierarchy.py sits in frontend/
+            _here.parents[1] / "frontend" / "static" / "js",      # if hierarchy.py is one level below project root
+            _here.parents[1] / "static" / "js",                   # alternate
+            _here.parents[2] / "frontend" / "static" / "js",      # deeper layout
+            _here.parents[2] / "static" / "js",
+            pathlib.Path.cwd() / "frontend" / "static" / "js",    # run-cwd relative
+            pathlib.Path.cwd() / "static" / "js"
+        ]
+        js_dir = None
+        for d in _candidate_dirs:
+            if d.exists() and d.is_dir():
+                js_dir = d
+                break
+
+        def _read_js_or_warn(fname):
+            """读取 js 文件，出错时返回一个小的 console.warn 脚本，避免页面崩溃"""
+            if js_dir is None:
+                logger.warning(f"无法找到本地 js 目录；候选: {_candidate_dirs}")
+                return f'console.warn("内联 JS {fname} 失败：未找到静态 js 目录");'
+            p = js_dir / fname
+            try:
+                text = p.read_text(encoding="utf-8")
+                # 如果文件很大，可在此做额外处理（例如去掉 sourceMapping 注释），但通常不需要
+                return text
+            except Exception as e:
+                logger.exception(f"读取本地 JS 失败: {p} -> {e}")
+                return f'console.warn("内联 JS {fname} 读取失败: {str(e)}");'
+
+        # 读取三份常用文件（如果你只需要 echarts，可以只读取 echarts.min.js）
+        _echarts_js = _read_js_or_warn("echarts.min.js")
+        _chartjs_js = _read_js_or_warn("chart.umd.js")
+        _color_js = _read_js_or_warn("color.min.js")
+
+        # 替换模板中可能的 <script src=...> 引用为内联脚本（支持 /static 和 ./static 两种写法）
+        def _inline_js_in_template(template_str: str, filename: str, content: str) -> str:
+            patterns = [
+                f'<script src="/static/js/{filename}"></script>',
+                f"<script src=\"/static/js/{filename}\"></script>",
+                f"<script src='./static/js/{filename}'></script>",
+                f'<script src="./static/js/{filename}"></script>',
+                f"<script src='static/js/{filename}'></script>",
+                f'<script src="static/js/{filename}"></script>',
+            ]
+            script_tag = f"<script>\n{content}\n</script>"
+            for p in patterns:
+                if p in template_str:
+                    template_str = template_str.replace(p, script_tag)
+            return template_str
+
         html_template = r"""<!DOCTYPE html>
 <html>
 <head>
@@ -348,16 +409,24 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
     #__CHART_ID__{width:100%;height:100%;}
     .__PANEL_ID__{
       position:absolute;top:14px;right:24px;background:rgba(255,255,255,0.98);
-      padding:10px 12px;border:1px solid #ddd;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);
-      z-index:9999;font-size:13px;min-width:160px;max-height:70vh;overflow:auto;
-      backdrop-filter: blur(4px);
+      padding:8px 10px;border:1px solid #ddd;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.12);
+      z-index:9999;font-size:13px;width:180px;max-height:280px;overflow:hidden;
+      backdrop-filter: blur(4px);user-select:none;cursor:move;
+      display:flex;flex-direction:column;
     }
-    .__PANEL_ID__ .title{margin-bottom:6px;font-weight:600;}
+    .__PANEL_ID__.collapsed .panel-body{display:none;}
+    .__PANEL_ID__.collapsed .panel-header .toggle-btn::after{content:'展开';}
+    .__PANEL_ID__ .panel-header{
+      display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;
+      font-weight:600;cursor:pointer;
+    }
+    .__PANEL_ID__ .toggle-btn{font-size:12px;color:#666;}
+    .__PANEL_ID__ .panel-body{flex:1;overflow-y:auto;margin-right:-10px;padding-right:10px;}
     .__PANEL_ID__ .item{display:flex;align-items:center;margin:4px 0;}
     .__PANEL_ID__ .item input{margin-right:6px;}
     .__PANEL_ID__ .color{display:inline-block;width:12px;height:12px;margin-right:6px;border-radius:2px;}
-    .__PANEL_ID__ .buttons{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;}
-    .__PANEL_ID__ button{padding:6px 8px;font-size:12px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fafafa;}
+    .__PANEL_ID__ .buttons{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;}
+    .__PANEL_ID__ button{padding:4px 6px;font-size:11px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fafafa;}
     .__PANEL_ID__ button:hover{background:#f0f0f0;}
   </style>
 </head>
@@ -365,8 +434,11 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
   <div class="chart-wrapper">
     <div id="__CHART_ID__"></div>
     <div class="__PANEL_ID__" id="__PANEL_ID__">
-      <div class="title">筛选</div>
-      <div id="legend-items"></div>
+      <div class="panel-header">
+        <div class="title">筛选</div>
+        <div class="toggle-btn">折叠</div>
+      </div>
+      <div class="panel-body" id="legend-items"></div>
       <div class="buttons">
         <button id="select-all">全选</button>
         <button id="deselect-all">取消</button>
@@ -467,18 +539,17 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
         const ctx = document.createElement('canvas').getContext('2d');
         ctx.font = fontSpec;
 
-        const levelHeights = new Array(__MAXDEPTH__).fill(0);
-        const levelLabelsLines = new Array(__MAXDEPTH__).fill(null).map(()=>[]);
+        const actualMaxDepth = Math.max(1, __MAXDEPTH__);
+        const levelHeights = new Array(actualMaxDepth).fill(0);
+        const levelLabelsLines = new Array(actualMaxDepth).fill(null).map(()=>[]);
 
-        for(let lvl=0; lvl<__MAXDEPTH__; lvl++){
-          const gs = groupsPerLevel[lvl] || [];
+        for(let lvl = 0; lvl < actualMaxDepth; lvl++){
+          const gs = (groupsPerLevel[lvl] || []).filter(g => g && g.label);
+          if (gs.length === 0 && lvl > 0) continue;
+
           for(const g of gs){
-            if(!g.label) continue;
             const wRect = (g.end - g.start + 1) * catW;
-            const labelWidth = ctx.measureText(g.label).width;
-            let lines = [];
-            if(labelWidth <= wRect * 0.9) lines = [g.label];
-            else lines = splitTextIntoLines(g.label, wRect * 0.9, fontSpec, maxLines);
+            const lines = splitTextIntoLines(g.label, wRect * 0.9, fontSpec, maxLines);
             const lineHeight = __LABELFONTSIZE__ * 1.2;
             const totalTextHeight = lines.length * lineHeight;
             levelLabelsLines[lvl].push({g, lines, totalTextHeight});
@@ -487,9 +558,10 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
           if(levelHeights[lvl] < __GAPBETWEENAXES__) levelHeights[lvl] = __GAPBETWEENAXES__;
         }
 
-        // 从底部向上绘制
-        for(let lvl=0; lvl<__MAXDEPTH__; lvl++){
+        for(let lvl = 0; lvl < actualMaxDepth; lvl++){
           const gs = levelLabelsLines[lvl] || [];
+          if (gs.length === 0) continue;
+
           const levelH = levelHeights[lvl];
           const bg = bgColors[lvl % bgColors.length];
           for(const item of gs){
@@ -498,7 +570,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
             const totalTextHeight = item.totalTextHeight;
             const x = left + g.start * catW;
             const wRect = (g.end - g.start + 1) * catW;
-            const y0 = reservedTop + ((__MAXDEPTH__ - 1 - lvl) * levelH) + 6;
+            const y0 = reservedTop + ((actualMaxDepth - 1 - lvl) * levelH) + 6;
             gfx.push({type:'rect', shape:{x, y:y0, width:wRect, height:levelH}, style:{fill:bg, stroke:'#e6e6e6', lineWidth:1}, z:1});
             const lineHeight = __LABELFONTSIZE__ * 1.2;
             lines.forEach((line, i) => {
@@ -516,11 +588,44 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
 
     // 面板与交互逻辑
     const panel = document.getElementById('__PANEL_ID__');
+    const header = panel.querySelector('.panel-header');
+    const toggleBtn = panel.querySelector('.toggle-btn');
     const items = document.getElementById('legend-items');
     const selectAllBtn = document.getElementById('select-all');
     const deselectAllBtn = document.getElementById('deselect-all');
     const toggleLabelBtn = document.getElementById('toggle-labels');
     const selectedWeeks = new Set(weeks);
+
+    // 拖拽支持
+    let isDragging = false;
+    let dragOffset = { x: 0, y: 0 };
+    header.addEventListener('mousedown', e => {
+      if (e.target === toggleBtn) return;
+      isDragging = true;
+      const rect = panel.getBoundingClientRect();
+      dragOffset.x = e.clientX - rect.left;
+      dragOffset.y = e.clientY - rect.top;
+      panel.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      panel.style.left = `${e.clientX - dragOffset.x}px`;
+      panel.style.top = `${e.clientY - dragOffset.y}px`;
+      panel.style.right = 'auto';
+      panel.style.transform = 'none';
+    });
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        panel.style.cursor = 'move';
+      }
+    });
+
+    // 折叠/展开
+    header.addEventListener('click', e => {
+      if (e.target !== toggleBtn) return;
+      panel.classList.toggle('collapsed');
+    });
 
     function renderLegend(){
       items.innerHTML = '';
@@ -547,7 +652,6 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
         label: { show: showLabels, position: 'top', fontSize: 11, color: '#333', formatter: p => p.value > 0 ? p.value : '' }
       }));
       chart.setOption({ series: newSeries });
-      // 关键：setOption 可能会清空 graphic，延迟重新绘制
       setTimeout(() => { draw(); }, 10);
     }
 
@@ -569,7 +673,7 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
 
     // 初始渲染
     renderLegend();
-    updateSeries(); // updateSeries 会触发 draw()
+    updateSeries();
 
     window.addEventListener('resize', () => { chart.resize(); setTimeout(draw, 120); });
 
@@ -578,6 +682,10 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
 </body>
 </html>
 """
+        # 在定义 html_template 之后，做内联替换
+        html_template = _inline_js_in_template(html_template, "echarts.min.js", _echarts_js)
+        html_template = _inline_js_in_template(html_template, "chart.umd.js", _chartjs_js)
+        html_template = _inline_js_in_template(html_template, "color.min.js", _color_js)
 
         # 替换占位符
         replacements = {
@@ -614,3 +722,5 @@ def render_hierarchical_bar(viz_data: Dict[str, Any], height: int = 700) -> Tupl
 
 
 __all__ = ["render_hierarchical_bar"]
+
+

@@ -288,13 +288,13 @@ if __name__ == "__main__":
     data_sources = [
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表6", "光模块故障表")]),
         # ExcelDataSourceLoader("20250813光模块分析.xlsx", sheets=[("工作表5", "光模块故障表"),("工作表6", "光模块故障表")])
-        # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users"
-        # OpticalFailureDataSourceLoader(),
+        # APIDataSourceLoader("https://jsonplaceholder.typicode.com/users", "users")
+        OpticalFailureDataSourceLoader(),
         # OpticalModuleInventoryDataSourceLoader(),  # 使用新的NOC全量数据源替代
         # NOCOpticalModuleFullDataSourceLoader(),
-        # RoceEventDataSourceLoader(),
+        RoceEventDataSourceLoader(),
         # 如果有XLSX文件，可以添加以下数据源
-        XLSXRoceNetworkPartFaultDataSourceLoader("D:\\Code\\KC-SQLAgent-Visualization-v1.8\\roce事件列表_2025-10-23 10_16_19.xlsx_1761185779.xlsx"),
+        # XLSXRoceNetworkPartFaultDataSourceLoader("D:\\Code\\KC-SQLAgent-Visualization-v1.8\\roce事件列表_2025-10-23 10_16_19.xlsx_1761185779.xlsx"),
     #     NetworkDeviceInventoryDataSourceLoader(),
     #     NetworkDeviceFailureDataSourceLoader()
     ]

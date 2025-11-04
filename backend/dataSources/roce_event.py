@@ -25,8 +25,8 @@ def query_roce_network_event_demo():
     roce_event_mongo_host = "10.69.74.235"
     roce_event_mongo_port  = 8526
     roce_event_mongo_db    = "alertpolicy"
-    roce_event_mongo_user  = "network_event_ro_test"
-    roce_event_mongo_pass  = "Ro123456"
+    roce_event_mongo_user  = "network_event_ro_user_sysnet"
+    roce_event_mongo_pass  = "rosysnet5678"
 
     # 连接数据库
     if not connect_mongodb(host=roce_event_mongo_host, port=roce_event_mongo_port,
