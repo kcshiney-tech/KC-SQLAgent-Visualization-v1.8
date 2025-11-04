@@ -13,6 +13,5 @@ altair
 streamlit
 fastapi
 uvicorn[standard]
-sse-starlette
 requests
-aiosqlite
+

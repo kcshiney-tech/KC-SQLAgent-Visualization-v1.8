@@ -32,6 +32,11 @@ from pydantic import BaseModel, Field
 from backend.utils.viz_utils import choose_viz_type, format_data_for_viz, format_tables, build_chart_config
 import pandas as pd
 
+import asyncio
+import time
+import math
+from typing import Callable, Dict, Any
+
 
 # Configure logging
 logging.getLogger().handlers = []
@@ -60,6 +65,8 @@ TEMPERATURE = float(os.getenv("QWEN_TEMPERATURE", 0.2))
 
 # 检查点数据库路径（独立于主DB）
 CHECKPOINT_DB_PATH = "checkpoints.db"
+
+DEFAULT_DB_PATH = "real_database.db"
 
 class State(TypedDict):
     """State definition for the LangGraph workflow, aligned with State.py."""
@@ -501,6 +508,124 @@ def process_query(graph, inputs: dict, config: RunnableConfig, status_callback: 
             "tool_history": inputs.get("tool_history", []),
             "error": str(e)
         }
+
+
+async def run_task(task_id: str, payload: Dict[str, Any], emit_event: Callable[[str, dict], asyncio.Future]):
+    """
+    Background task entrypoint for SSE flow.
+    - task_id: unique id for this run
+    - payload: dict with keys {user_id, query, params}
+    - emit_event: coroutine function for pushing events to event_bus (await emit_event(task_id, event))
+    This function:
+      1) prepares graph and inputs,
+      2) calls process_query in a background thread (so LLM and tool execution run off the event loop),
+      3) after completion, sends incremental events:
+         - text_chunk (splits final answer into chunks and emits them sequentially)
+         - table_ready for each table in result['tables']
+         - viz_ready for result['viz_data'] if present
+         - tool_history events if present
+         - final (note: sse_api.py wrapper also emits a final; here we emit an additional final for completeness)
+    """
+    start_ts = time.time()
+    try:
+        # 1) emit a status that we scheduled processing
+        await emit_event(task_id, {"type": "status", "message": "scheduled"})
+
+        # 2) Prepare inputs for process_query in the same shape expected by process_query
+        user_query = payload.get("query", "")
+        user_message = HumanMessage(content=user_query)
+        # Rebuild graph for this task to avoid shared mutable state; use default DB path
+        try:
+            db = SQLDatabase.from_uri(f"sqlite:///{DEFAULT_DB_PATH}")
+            graph, _tools = build_graph(db)
+        except Exception:
+            # if building graph fails, try using a previously compiled graph if exists in module scope
+            # fallback: try to use 'graph' variable if defined globally
+            if 'graph' in globals():
+                graph = globals()['graph']
+            else:
+                # unable to build or find graph -> report error
+                raise
+
+        inputs = {
+            "messages": [user_message],
+            "question": user_query,
+            "tool_history": [],
+            "status_messages": []
+        }
+        config = {"configurable": {"thread_id": task_id}}
+
+        # 3) Inform frontend that LLM+tools processing is starting
+        await emit_event(task_id, {"type": "status", "message": "processing_started"})
+
+        # 4) Run process_query in thread to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        # prepare a synchronous status callback that forwards to emit_event (non-blocking)
+        def status_cb_sync(msg: str):
+            # schedule async emit
+            try:
+                asyncio.get_event_loop().create_task(emit_event(task_id, {"type": "status", "message": msg}))
+            except RuntimeError:
+                # If no running loop in this thread, fall back to asyncio.run
+                try:
+                    asyncio.run(emit_event(task_id, {"type": "status", "message": msg}))
+                except Exception:
+                    pass
+
+        # run process_query in a thread
+        result = await loop.run_in_executor(None, lambda: process_query(graph, inputs, config, status_cb_sync))
+
+        # measure processing_time from the worker perspective
+        processing_time = time.time() - start_ts
+
+        # 5) After we get result, stream the answer to frontend in chunks to give progressive feel
+        answer_text = result.get("answer", "") or ""
+        # split answer into chunks of reasonable size for the front-end to append
+        chunk_size = 120  # characters per chunk
+        if answer_text:
+            # Send a header status
+            await emit_event(task_id, {"type": "status", "message": "answer_ready"})
+            # Emit chunks sequentially (no long sleeps; but small yield to event loop to allow UI update)
+            for i in range(0, len(answer_text), chunk_size):
+                chunk = answer_text[i:i + chunk_size]
+                await emit_event(task_id, {"type": "text_chunk", "chunk": chunk})
+                # yield briefly to event loop to allow client processing for large answers
+                await asyncio.sleep(0.01)
+            await emit_event(task_id, {"type": "text_end"})
+        else:
+            # No answer generated; inform client
+            await emit_event(task_id, {"type": "status", "message": "empty_answer"})
+
+        # 6) Emit tool history events (if any) so frontend can display tool progress retrospectively
+        tool_history = result.get("tool_history", []) or []
+        for th in tool_history:
+            # standardize events for frontend display
+            await emit_event(task_id, {"type": "tool_event", "tool": th.get("tool"), "input": th.get("input"), "output": th.get("output")})
+
+        # 7) Emit tables one by one
+        tables = result.get("tables", []) or []
+        for t in tables:
+            # table payload includes title and data
+            await emit_event(task_id, {"type": "table_ready", "payload": {"title": t.get("title", ""), "columns": list(t.get("data")[0].keys()) if t.get("data") else [], "rows": t.get("data")}})
+            # small pause
+            await asyncio.sleep(0.02)
+
+        # 8) Emit viz_ready if available
+        viz_data = result.get("viz_data", {}) or result.get("chart_config", {}) or {}
+        if viz_data:
+            await emit_event(task_id, {"type": "viz_ready", "payload": viz_data})
+
+        # 9) Final event (also include processing_time)
+        final_payload = {"type": "final", "status": "success", "processing_time": processing_time}
+        await emit_event(task_id, final_payload)
+
+    except Exception as e:
+        # On error: emit final with error
+        try:
+            await emit_event(task_id, {"type": "final", "status": "error", "error": str(e)})
+        except Exception:
+            pass
+        raise
 
 if __name__ == "__main__":
     try:

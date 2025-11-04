@@ -442,7 +442,9 @@ with chat_container:
                         st.dataframe(pd.DataFrame(table["data"]))
 
 # ------------------- 输入框 -------------------
+# 替换 app.py 中原有 prompt 处理与 process_query 同步调用的部分
 prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
+
 if prompt:
     user_ip = st.query_params.get("user_ip", "unknown")
     logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
@@ -450,69 +452,260 @@ if prompt:
     # 记录首次问题（用于侧边栏展示）
     if not st.session_state.first_questions[st.session_state.current_thread_id]:
         st.session_state.first_questions[st.session_state.current_thread_id] = (
-            prompt[:50] + "..." if len(prompt) > 50 else prompt
+            prompt[:50] + "." if len(prompt) > 50 else prompt
         )
 
     user_message = HumanMessage(content=prompt)
     st.session_state.chat_history[st.session_state.current_thread_id].append(user_message)
 
+    # UI placeholders
     with chat_container:
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Show assistant message container (will be updated by embedded component)
         with st.chat_message("assistant"):
             status_placeholder = st.empty()
             answer_placeholder = st.empty()
             chart_placeholder = st.empty()
             table_placeholder = st.empty()
-            status_placeholder.markdown("开始查询处理...")
-            with st.spinner("处理中..."):
-                try:
-                    # 过滤仅保留 Human/AI 消息（不带 tool_calls）
-                    filtered_messages = [
-                        msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
-                        if isinstance(msg, (HumanMessage, AIMessage))
-                        and not (isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None))
-                    ]
+            status_placeholder.markdown("准备发送任务到后端...")
 
-                    inputs = {
-                        "messages": filtered_messages + [user_message],
-                        "question": prompt,
-                        "tool_history": st.session_state.tool_history.get(st.session_state.current_thread_id, []),
-                        "status_messages": []
-                    }
-                    config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
-                    result = process_query(
-                        graph, inputs, config,
-                        lambda msg: status_placeholder.markdown(translate_status_message(msg))
-                    )
-                    stream_response(result, status_placeholder, answer_placeholder, chart_placeholder, table_placeholder)
+            # Start SSE backend task
+            try:
+                SSE_API_BASE = "http://localhost:8000"  # 如果部署到域名或不同端口，请修改为你的后端地址
+                payload = {"user_id": "streamlit_user", "query": prompt, "params": {}}
+                import requests
+                resp = requests.post(f"{SSE_API_BASE}/start_task", json=payload, timeout=15)
+                if resp.status_code != 200 and resp.status_code != 201:
+                    status_placeholder.error(f"启动任务失败: {resp.status_code} {resp.text}")
+                else:
+                    task_id = resp.json().get("task_id")
+                    status_placeholder.markdown(f"任务已启动：{task_id}，正在连接事件流...")
 
-                    # 保存 assistant 消息（含图表/表格）
-                    assistant_message = AIMessage(content=result.get("answer", ""))
-                    if result.get("tables"):
-                        assistant_message.tables = result["tables"]
-                    if result.get("viz_data"):
-                        assistant_message.chart_config = result["viz_data"]
+                    # 直接把 SSE 前端逻辑放到一个 HTML component 中，避免 Streamlit 主线程轮询复杂化
+                    component_html_template = f"""
+                    <!-- component_html (replace prior component_html string in app.py) -->
+                    <!doctype html>
+                    <html>
+                    <head>
+                    <meta charset="utf-8">
+                    <title>Agent Stream (compact)</title>
+                    <style>
+                        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:8px; }}
+                        #container {{ max-width: 100%; }}
+                        #mini {{ display:flex; gap:8px; align-items:center; }}
+                        #openBtn {{ padding:6px 10px; border-radius:6px; border:1px solid #ddd; background:#f7f7f7; cursor:pointer; }}
+                        #statusInline {{ color:#666; font-size:13px; }}
+                        #panel {{ display:none; border:1px solid #eee; padding:10px; margin-top:10px; border-radius:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); background:#fff; }}
+                        #answer {{ white-space: pre-wrap; min-height:40px; margin-bottom:8px; }}
+                        .sectionTitle {{ font-weight:600; margin-top:8px; margin-bottom:6px; font-size:14px; color:#222; }}
+                        #table {{ max-height:300px; overflow:auto; border-top:1px solid #f0f0f0; padding-top:8px; }}
+                        #chart {{ margin-top:8px; }}
+                        .muted {{ color:#888; font-size:13px; }}
+                        .hidden {{ display:none; }}
+                        .error {{ color:#b00020; font-weight:600; }}
+                    </style>
+                    </head>
+                    <body>
+                    <div id="container">
+                        <div id="mini">
+                        <div id="openBtn">打开实时结果</div>
+                        <div id="statusInline">状态：等待任务启动...</div>
+                        </div>
 
-                    # 更新历史（保留所有消息，供后续上下文）
-                    st.session_state.chat_history[st.session_state.current_thread_id] = (
-                        result.get("messages", []) + [assistant_message]
-                    )
-                    # 只保留关键工具历史
-                    st.session_state.tool_history[st.session_state.current_thread_id] = [
-                        h for h in result.get("tool_history", [])
-                        if h["tool"] in [
-                            "sql_db_list_tables", "sql_db_schema",
-                            "sql_db_query", "sql_db_query_checker", "check_result"
-                        ]
-                    ]
+                        <div id="panel" role="region" aria-live="polite">
+                        <div class="sectionTitle">即时回答</div>
+                        <div id="answer" class="muted">尚无回答</div>
 
-                except Exception as e:
-                    status_placeholder.error("抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                    logger.error(f"Query failed for IP {user_ip}: {traceback.format_exc()}")
-                    err_msg = AIMessage(content="抱歉，处理查询时发生错误，请稍后重试或联系支持。")
-                    st.session_state.chat_history[st.session_state.current_thread_id].append(err_msg)
+                        <div id="tableWrapper" class="hidden">
+                            <div class="sectionTitle">表格</div>
+                            <div id="table">尚无数据</div>
+                        </div>
+
+                        <div id="chartWrapper" class="hidden">
+                            <div class="sectionTitle">图表</div>
+                            <div id="chart">尚无图表</div>
+                        </div>
+
+                        <div id="finalArea" class="muted" style="margin-top:8px;">总耗时：-</div>
+                        <div id="errorArea" class="error hidden"></div>
+                        </div>
+                    </div>
+
+                    <script>
+                        (function(){{
+                        const SSE_API_BASE = "{{SSE_API_BASE}}";
+                        const TASK_ID = "{{task_id}}";
+                        const eventsUrl = SSE_API_BASE + "/events?task_id=" + TASK_ID;
+
+                        const openBtn = document.getElementById('openBtn');
+                        const statusInline = document.getElementById('statusInline');
+                        const panel = document.getElementById('panel');
+                        const answerEl = document.getElementById('answer');
+                        const tableWrapper = document.getElementById('tableWrapper');
+                        const chartWrapper = document.getElementById('chartWrapper');
+                        const tableEl = document.getElementById('table');
+                        const chartEl = document.getElementById('chart');
+                        const finalArea = document.getElementById('finalArea');
+                        const errorArea = document.getElementById('errorArea');
+
+                        let evtSource = null;
+                        let connected = false;
+                        let reconnectAttempts = 0;
+
+                        function showPanel() {{
+                            panel.style.display = 'block';
+                        }}
+
+                        function hidePanel() {{
+                            panel.style.display = 'none';
+                        }}
+
+                        function safeParse(data) {{
+                            try {{ return JSON.parse(data); }} catch(e) {{ return null; }}
+                        }}
+
+                        function renderTable(payload) {{
+                            try {{
+                            const cols = payload.columns || (payload.rows && payload.rows.length ? Object.keys(payload.rows[0]) : []);
+                            const rows = payload.rows || [];
+                            if(!cols.length) {{
+                                tableEl.innerText = '无列数据';
+                                return;
+                            }}
+                            let html = '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%"><thead><tr>';
+                            for (let c of cols) html += `<th style="background:#fafafa;text-align:left">${{c}}</th>`;
+                            html += '</tr></thead><tbody>';
+                            for (let r of rows) {{
+                                html += '<tr>';
+                                for (let c of cols) html += `<td>${{r[c] !== undefined ? r[c] : ''}}</td>`;
+                                html += '</tr>';
+                            }}
+                            html += '</tbody></table>';
+                            tableEl.innerHTML = html;
+                            }} catch (e) {{
+                            tableEl.innerText = '渲染表格失败: ' + e;
+                            }}
+                        }}
+
+                        function renderViz(payload) {{
+                            try {{
+                            // Minimal rendering: label/value list for bar chart; extend if you embed ECharts later
+                            if(payload && payload.chart && payload.chart.type === 'bar') {{
+                                const labels = payload.chart.data.labels || [];
+                                const values = payload.chart.data.values || [];
+                                let html = '<div>';
+                                for(let i=0;i<labels.length;i++) {{
+                                html += `<div style="display:flex; justify-content:space-between; padding:4px 0;"><div>${{labels[i]}}</div><div>${{values[i]}}</div></div>`;
+                                }}
+                                html += '</div>';
+                                chartEl.innerHTML = html;
+                            }} else {{
+                                chartEl.innerText = JSON.stringify(payload, null, 2);
+                            }}
+                            }} catch(e) {{
+                            chartEl.innerText = '渲染图表失败: ' + e;
+                            }}
+                        }}
+
+                        function startSSE() {{
+                            if(evtSource) {{
+                            try {{ evtSource.close(); }} catch(e) {{}}
+                            evtSource = null;
+                            }}
+                            evtSource = new EventSource(eventsUrl);
+                            connected = false;
+                            evtSource.onopen = function() {{
+                            connected = true;
+                            reconnectAttempts = 0;
+                            statusInline.textContent = '状态：已连接事件流';
+                            showPanel();
+                            }};
+                            evtSource.onmessage = function(e) {{
+                            const ev = safeParse(e.data);
+                            if(!ev) return;
+                            // Ignore pings
+                            if(ev.type === 'ping') {{
+                                // console.debug('ping', ev);
+                                return;
+                            }}
+                            // Show panel on first meaningful event
+                            if(!connected) {{ connected = true; showPanel(); }}
+                            if(ev.type === 'status') {{
+                                statusInline.textContent = '状态：' + (ev.message || '');
+                                return;
+                            }}
+                            if(ev.type === 'text_chunk') {{
+                                if(answerEl.classList.contains('muted')) answerEl.classList.remove('muted');
+                                if(answerEl.textContent === '尚无回答') answerEl.textContent = '';
+                                answerEl.textContent += ev.chunk;
+                                return;
+                            }}
+                            if(ev.type === 'text_end') {{
+                                statusInline.textContent = '状态：文本生成完成';
+                                return;
+                            }}
+                            if(ev.type === 'tool_event') {{
+                                // optionally log tool events to console for debugging
+                                console.log('tool_event', ev);
+                                return;
+                            }}
+                            if(ev.type === 'table_ready') {{
+                                tableWrapper.classList.remove('hidden');
+                                renderTable(ev.payload || {{}});
+                                statusInline.textContent = '状态：表格就绪';
+                                return;
+                            }}
+                            if(ev.type === 'viz_ready') {{
+                                chartWrapper.classList.remove('hidden');
+                                renderViz(ev.payload || {{}});
+                                statusInline.textContent = '状态：图表就绪';
+                                return;
+                            }}
+                            if(ev.type === 'final') {{
+                                finalArea.textContent = '总耗时：' + (ev.processing_time ? ev.processing_time.toFixed(2) + ' 秒' : '-');
+                                if(ev.status && ev.status !== 'success') {{
+                                errorArea.classList.remove('hidden');
+                                errorArea.textContent = '处理出错: ' + (ev.error || '未知错误');
+                                statusInline.textContent = '状态：已终止（错误）';
+                                }} else {{
+                                statusInline.textContent = '状态：已完成';
+                                }}
+                                try {{ evtSource.close(); }} catch(e){{}}
+                                return;
+                            }}
+                            }};
+                            evtSource.onerror = function(err) {{
+                            statusInline.textContent = '状态：事件流错误或断开（将尝试重连）';
+                            console.warn('SSE error', err);
+                            // Auto reconnect with backoff
+                            try {{ evtSource.close(); }} catch(e){{}}
+                            evtSource = null;
+                            reconnectAttempts++;
+                            const backoff = Math.min(30, 1 + reconnectAttempts * 2);
+                            setTimeout(() => startSSE(), backoff * 1000);
+                            }};
+                        }}
+
+                        // initial actions: clicking open button triggers SSE connect and shows panel
+                        openBtn.addEventListener('click', function(){{
+                            statusInline.textContent = '状态：正在连接事件流...';
+                            startSSE();
+                            // hide button to avoid re-clicks
+                            openBtn.style.display = 'none';
+                        }});
+
+                        // Optional: auto-open immediately
+                        // openBtn.click();
+                        }})();
+                    </script>
+                    </body>
+                    </html>
+                    """
+                    component_html = component_html_template.replace("{SSE_API_BASE}", SSE_API_BASE).replace("{task_id}", task_id)
+            except Exception as ex:
+                status_placeholder.error(f"任务启动失败: {ex}")
 
 # ------------------- 退出指令 -------------------
 if prompt and prompt.lower() in ["exit", "quit"]:
