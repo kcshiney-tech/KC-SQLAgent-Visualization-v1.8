@@ -443,6 +443,7 @@ with chat_container:
 
 # ------------------- 输入框 -------------------
 prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
+
 # === 替换 app.py 中整个 if prompt: 块 ===
 if prompt:
     user_ip = st.query_params.get("user_ip", "unknown")
@@ -461,109 +462,158 @@ if prompt:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            status_placeholder = st.empty()
-            answer_placeholder = st.empty()
-            chart_placeholder = st.empty()
-            table_placeholder = st.empty()
+            # === Grok 风格“思考中”折叠框（动态标题）===
+            expander_title = st.empty()
+            thinking_expander = st.expander("思考中...", expanded=True)
+            with thinking_expander:
+                status_lines = st.empty()
 
-            # 初始化中间状态
+            # === 内容容器 ===
+            answer_container = st.empty()
+            chart_container = st.empty()
+            table_container = st.empty()
+            timing_container = st.empty()
+
+            # === 耗时记录 ===
+            timings = {
+                "start": time.time(),
+                "answer_start": None,
+                "answer_end": None,
+                "chart_start": None,
+                "chart_end": None,
+                "table_start": None,
+                "table_end": None,
+                "tool_times": []
+            }
+
             intermediate = {
                 "answer": "",
                 "viz_data": None,
                 "viz_type": "none",
                 "tables": [],
-                "tool_history": []
+                "tool_history": [],
+                "status_lines": []
             }
 
-            def stream_generator():
-                try:
-                    filtered_messages = [
-                        msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
-                        if isinstance(msg, (HumanMessage, AIMessage))
-                        and not (isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None))
-                    ]
+            # === 追加状态行并更新标题 ===
+            def add_status(text: str, phase: str = None):
+                intermediate["status_lines"].append(text)
+                status_lines.markdown("\n".join(intermediate["status_lines"]))
+                if phase:
+                    expander_title.markdown(f"**{phase}**")
 
-                    inputs = {
-                        "messages": filtered_messages + [user_message],
-                        "question": prompt,
-                        "tool_history": st.session_state.tool_history.get(st.session_state.current_thread_id, []),
-                        "status_messages": []
-                    }
-                    config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
+            # === 手动流式处理 ===
+            try:
+                filtered_messages = [
+                    msg for msg in st.session_state.chat_history[st.session_state.current_thread_id]
+                    if isinstance(msg, (HumanMessage, AIMessage))
+                    and not (isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None))
+                ]
 
-                    last_status = []
+                inputs = {
+                    "messages": filtered_messages + [user_message],
+                    "question": prompt,
+                    "tool_history": st.session_state.tool_history.get(st.session_state.current_thread_id, []),
+                    "status_messages": []
+                }
+                config = {"configurable": {"thread_id": st.session_state.current_thread_id}}
 
-                    for chunk in graph.stream(inputs, config, stream_mode="values"):
-                        state = chunk
+                last_status = []
 
-                        # === 1. 状态更新（仅内部，不输出）===
-                        new_status = state.get("status_messages", [])
-                        if new_status and new_status != last_status:
-                            latest = translate_status_message(new_status[-1])
-                            status_placeholder.markdown(latest)
-                            last_status = new_status
+                for chunk in graph.stream(inputs, config, stream_mode="values"):
+                    state = chunk
 
-                        # === 2. 回答流式输出（只 yield 文本）===
-                        final_ai_msg = None
-                        for msg in reversed(state.get("messages", [])):
-                            if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
-                                final_ai_msg = msg
-                                break
-                        if final_ai_msg and final_ai_msg.content:
-                            new_text = final_ai_msg.content
-                            if len(new_text) > len(intermediate["answer"]):
-                                delta = new_text[len(intermediate["answer"]):]
-                                intermediate["answer"] = new_text
-                                yield delta  # 只 yield 文本！
+                    # === 1. 工具执行状态 ===
+                    new_status = state.get("status_messages", [])
+                    if new_status and new_status != last_status:
+                        latest_msg = new_status[-1]
+                        translated = translate_status_message(latest_msg)
+                        add_status(f"- {translated}")
+                        last_status = new_status
 
-                        # === 3. 图表立即渲染 ===
-                        if state.get("viz_data") and state.get("viz_type") != "none":
-                            if intermediate["viz_data"] is None:
-                                intermediate["viz_data"] = state["viz_data"]
-                                intermediate["viz_type"] = state["viz_type"]
-                                # 触发渲染（不 yield）
-                                with chart_placeholder.container():
-                                    st.markdown("**图表:**")
-                                    dummy_result = {
-                                        "viz_type": state["viz_type"],
-                                        "viz_data": state["viz_data"]
-                                    }
-                                    stream_response(dummy_result, st.empty(), st.empty(), chart_placeholder, st.empty())
+                    # === 2. 回答流式输出 ===
+                    final_ai_msg = None
+                    for msg in reversed(state.get("messages", [])):
+                        if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
+                            final_ai_msg = msg
+                            break
+                    if final_ai_msg and final_ai_msg.content:
+                        new_text = final_ai_msg.content
+                        if len(new_text) > len(intermediate["answer"]):
+                            delta = new_text[len(intermediate["answer"]):]
+                            intermediate["answer"] = new_text
+                            if timings["answer_start"] is None:
+                                timings["answer_start"] = time.time()
+                                # 回答开始：追加图表提示 + 更新标题
+                                add_status("- 正在生成图表~", "正在生成图表...")
+                            # 流式显示
+                            for char in delta:
+                                answer_container.markdown(f"**回答：**\n{intermediate['answer']}")
 
-                        # === 4. 表格立即渲染 ===
-                        if state.get("tables"):
-                            new_tables = state["tables"]
-                            if new_tables != intermediate["tables"]:
-                                intermediate["tables"] = new_tables
-                                with table_placeholder.container():
-                                    st.markdown("**表格:**")
-                                    for table in new_tables:
-                                        if table.get("data"):
-                                            st.markdown(f"**{table['title']}**")
-                                            st.dataframe(pd.DataFrame(table["data"]))
+                    # === 3. 图表生成 ===
+                    if state.get("viz_data") and state.get("viz_type") != "none":
+                        if intermediate["viz_data"] is None:
+                            intermediate["viz_data"] = state["viz_data"]
+                            intermediate["viz_type"] = state["viz_type"]
+                            timings["chart_start"] = time.time()
+                            # 渲染图表
+                            html, height = render_hierarchical_bar(state["viz_data"])
+                            chart_container.empty()
+                            chart_container.markdown("**图表：**")
+                            components.html(html, height=height, scrolling=True)
+                            timings["chart_end"] = time.time()
+                            # 图表完成：追加表格提示 + 更新标题
+                            add_status("- 正在生成表格~", "正在生成表格...")
 
-                        # === 5. 工具历史（内部保存）===
-                        if state.get("tool_history"):
-                            intermediate["tool_history"] = state["tool_history"]
+                    # === 4. 表格生成 ===
+                    if state.get("tables"):
+                        new_tables = state["tables"]
+                        if new_tables != intermediate["tables"]:
+                            intermediate["tables"] = new_tables
+                            timings["table_start"] = time.time()
+                            table_container.empty()
+                            table_container.markdown("**表格：**")
+                            for table in new_tables:
+                                if table.get("data"):
+                                    table_container.markdown(f"**{table['title']}**")
+                                    table_container.dataframe(pd.DataFrame(table["data"]))
+                            timings["table_end"] = time.time()
+                            # 表格完成：更新标题为“已完成”
+                            expander_title.markdown("**已完成**")
 
-                    # 结束
-                    status_placeholder.empty()
+                    # === 5. 工具历史 ===
+                    if state.get("tool_history"):
+                        intermediate["tool_history"] = state["tool_history"]
 
-                except Exception as e:
-                    logger.error(f"Stream error: {traceback.format_exc()}")
-                    yield "抱歉，处理查询时发生错误，请稍后重试或联系支持。"
-                    status_placeholder.error("处理失败")
+                # 结束
+                timings["answer_end"] = timings["answer_end"] or time.time()
 
-            # === 使用 st.write_stream 流式显示回答文本 ===
-            for token in st.write_stream(stream_generator):
-                # 累计回答
-                with answer_placeholder.container():
-                    st.markdown("**回答:**")
-                    st.markdown(intermediate["answer"] + (token if isinstance(token, str) else ""))
+            except Exception as e:
+                logger.error(f"Stream error: {traceback.format_exc()}")
+                answer_container.error("抱歉，处理查询时发生错误。")
+                expander_title.markdown("**处理失败**")
 
-            # === 最终保存历史消息 ===
-            final_answer = intermediate.get("answer", "")
-            assistant_message = AIMessage(content=final_answer)
+            # === 最终耗时（精准分段）===
+            total_time = time.time() - timings["start"]
+            thinking_time = sum(t["time"] for t in timings["tool_times"]) if timings["tool_times"] else 0
+            answer_time = (timings["answer_end"] - timings["answer_start"]) if timings["answer_start"] else 0
+            chart_time = (timings["chart_end"] - timings["chart_start"]) if timings["chart_start"] and timings["chart_end"] else 0
+            table_time = (timings["table_end"] - timings["table_start"]) if timings["table_start"] and timings["table_end"] else 0
+
+            timing_parts = [f"**总耗时:** {total_time:.2f}s"]
+            if thinking_time > 0:
+                timing_parts.append(f"思考: {thinking_time:.2f}s")
+            if answer_time > 0:
+                timing_parts.append(f"回答: {answer_time:.2f}s")
+            if chart_time > 0:
+                timing_parts.append(f"图表: {chart_time:.2f}s")
+            if table_time > 0:
+                timing_parts.append(f"表格: {table_time:.2f}s")
+
+            timing_container.caption(" | ".join(timing_parts))
+
+            # === 保存历史 ===
+            assistant_message = AIMessage(content=intermediate["answer"])
             if intermediate.get("tables"):
                 assistant_message.tables = intermediate["tables"]
             if intermediate.get("viz_data"):
