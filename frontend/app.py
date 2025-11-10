@@ -445,6 +445,11 @@ with chat_container:
 prompt = st.chat_input("输入您的查询 (例如: '2025年每个月，QYZNJ机房，光模块的故障数，按光模块型号和厂商分布，画折线图？')")
 from langchain_core.messages import ToolMessage
 
+from langchain_core.messages import ToolMessage
+import streamlit.components.v1 as components
+from langchain_core.messages import ToolMessage
+import streamlit.components.v1 as components
+
 if prompt:
     user_ip = st.query_params.get("user_ip", "unknown")
     logger.info(f"Query from IP {user_ip}, thread_id {st.session_state.current_thread_id}: {prompt}")
@@ -462,18 +467,19 @@ if prompt:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            # === Grok/ChatGPT 风格思考折叠框（动态标题 + 累积日志）===
+            # === 1. 动态标题（含最终耗时）===
             expander_title = st.empty()
             expander_title.markdown("**思考中...**")
-            thinking_expander = st.expander("思考中...", expanded=True)
-            with thinking_expander:
-                status_lines = st.empty()
 
-            # === 内容容器：回答 → 图表 → 表格（图表在上）===
+            # === 2. 折叠框：自动折叠长内容，无滚动条，无空白 ===
+            thinking_expander = st.expander("查看执行细节", expanded=False)  # 默认折叠
+            with thinking_expander:
+                log_container = st.empty()  # 直接写日志，自动换行
+
+            # === 3. 内容容器（顺序固定）===
             answer_container = st.empty()
             chart_container = st.empty()   # 图表在上
             table_container = st.empty()   # 表格在下
-            timing_container = st.empty()
 
             # === 耗时记录 ===
             timings = {
@@ -483,8 +489,7 @@ if prompt:
                 "chart_start": None,
                 "chart_end": None,
                 "table_start": None,
-                "table_end": None,
-                "tool_times": []
+                "table_end": None
             }
 
             intermediate = {
@@ -493,16 +498,23 @@ if prompt:
                 "viz_type": "none",
                 "tables": [],
                 "tool_history": [],
-                "status_lines": [],
-                "final_answer_content": None  # 记录最终回答内容
+                "log_lines": [],
+                "final_answer_content": None,
+                "chart_rendered": False,
+                "table_rendered": False
             }
 
-            # === 追加状态行（支持代码块、Agent 思考、工具输出）===
-            def add_status(text: str, phase: str = None):
-                intermediate["status_lines"].append(text)
-                status_lines.markdown("\n".join(intermediate["status_lines"]))
-                if phase:
-                    expander_title.markdown(f"**{phase}**")
+            # === 追加日志（自动换行，代码高亮）===
+            def add_log(text: str):
+                intermediate["log_lines"].append(text)
+                log_container.markdown("\n".join(intermediate["log_lines"]))
+
+            # === 更新标题（含耗时）===
+            def set_title(phase: str, timing_str: str = ""):
+                title = f"**{phase}**"
+                if timing_str:
+                    title += f"　{timing_str}"
+                expander_title.markdown(title)
 
             # === 手动流式处理 ===
             try:
@@ -526,40 +538,30 @@ if prompt:
                 for chunk in graph.stream(inputs, config, stream_mode="values"):
                     state = chunk
 
-                    # === 1. 工具/Agent 节点状态消息 ===
+                    # === 1. 工具状态 ===
                     new_status = state.get("status_messages", [])
                     if new_status and new_status != last_status:
                         for msg in new_status[len(last_status):]:
                             translated = translate_status_message(msg)
-                            add_status(f"- {translated}")
+                            add_log(f"- {translated}")
                         last_status = new_status
 
-                    # === 2. 新增消息：Agent 思考 + 工具调用 + 工具返回 ===
+                    # === 2. 工具调用 + 返回 ===
                     current_messages = state.get("messages", [])
                     if len(current_messages) > last_messages_len:
                         for new_msg in current_messages[last_messages_len:]:
-                            # 工具调用
                             if isinstance(new_msg, AIMessage) and getattr(new_msg, "tool_calls", None):
                                 for call in new_msg.tool_calls:
                                     args = json.dumps(call["args"], ensure_ascii=False, indent=2)
-                                    add_status(f"调用工具: `{call['name']}`")
-                                    add_status(f"```json\n{args}\n```")
-
-                            # 工具返回
+                                    add_log(f"调用工具: `{call['name']}`")
+                                    add_log(f"```json\n{args}\n```")
                             elif isinstance(new_msg, ToolMessage):
                                 result = str(new_msg.content)
-                                add_status(f"工具 `{new_msg.name}` 返回:")
-                                add_status(f"```text\n{result[:800]}{'...' if len(result)>800 else ''}\n```")
-
-                            # 中间 Agent 思考（非最终回答）
-                            elif isinstance(new_msg, AIMessage) and not getattr(new_msg, "tool_calls", None):
-                                content = new_msg.content.strip()
-                                if content and content != intermediate["final_answer_content"]:
-                                    add_status(f"Agent 思考: {content[:300]}{'...' if len(content)>300 else ''}")
-
+                                add_log(f"工具 `{new_msg.name}` 返回:")
+                                add_log(f"```text\n{result[:1000]}{'...' if len(result)>1000 else ''}\n```")
                         last_messages_len = len(current_messages)
 
-                    # === 3. 最终回答流式输出（不进入折叠框）===
+                    # === 3. 最终回答（不进折叠框）===
                     final_ai_msg = None
                     for msg in reversed(current_messages):
                         if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
@@ -571,21 +573,21 @@ if prompt:
                         if len(new_text) > len(intermediate["answer"]):
                             delta = new_text[len(intermediate["answer"]):]
                             intermediate["answer"] = new_text
-                            intermediate["final_answer_content"] = new_text  # 标记为最终回答
+                            intermediate["final_answer_content"] = new_text
 
                             if timings["answer_start"] is None:
                                 timings["answer_start"] = time.time()
-                                add_status("- 正在生成图表~", "生成中...")
+                                add_log("- 正在生成图表~")
+                                set_title("生成中...")
 
                             for char in delta:
                                 time.sleep(0.005)
                                 answer_container.markdown(f"**回答：**\n{intermediate['answer']}")
 
-                    # === 4. 图表生成（在表格前）===
+                    # === 4. 图表生成（在上）===
                     if state.get("viz_data") and state.get("viz_type") != "none":
-                        if intermediate["viz_data"] is None:
+                        if not intermediate["chart_rendered"]:
                             intermediate["viz_data"] = state["viz_data"]
-                            intermediate["viz_type"] = state["viz_type"]
                             timings["chart_start"] = time.time()
 
                             html, height = render_hierarchical_bar(state["viz_data"])
@@ -595,9 +597,10 @@ if prompt:
 
                             timings["chart_end"] = time.time()
                             chart_time = timings["chart_end"] - timings["chart_start"]
-                            add_status(f"- 图表渲染完成 (耗时: {chart_time:.2f}s)")
+                            add_log(f"- 图表渲染完成 (耗时: {chart_time:.2f}s)")
+                            intermediate["chart_rendered"] = True
 
-                    # === 5. 表格生成（在图表后）===
+                    # === 5. 表格生成（在下）===
                     if state.get("tables"):
                         new_tables = state["tables"]
                         if new_tables != intermediate["tables"]:
@@ -613,38 +616,38 @@ if prompt:
 
                             timings["table_end"] = time.time()
                             table_time = timings["table_end"] - timings["table_start"]
-                            add_status(f"- 表格渲染完成 (耗时: {table_time:.2f}s)", "已完成")
+                            add_log(f"- 表格渲染完成 (耗时: {table_time:.2f}s)")
 
                     # === 6. 工具历史 ===
                     if state.get("tool_history"):
                         intermediate["tool_history"] = state["tool_history"]
 
-                # 结束
+                # === 结束：更新标题 ===
                 timings["answer_end"] = timings["answer_end"] or time.time()
+
+                total_time = time.time() - timings["start"]
+                answer_time = (timings["answer_end"] - timings["answer_start"]) if timings["answer_start"] else 0
+                chart_time = (timings["chart_end"] - timings["chart_start"]) if timings["chart_start"] and timings["chart_end"] else 0
+                table_time = (timings["table_end"] - timings["table_start"]) if timings["table_start"] and timings["table_end"] else 0
+
+                timing_parts = []
+                if total_time > 0:
+                    timing_parts.append(f"总耗时: {total_time:.2f}s")
+                if answer_time > 0:
+                    timing_parts.append(f"回答: {answer_time:.2f}s")
+                if chart_time > 0:
+                    timing_parts.append(f"图表: {chart_time:.2f}s")
+                if table_time > 0:
+                    timing_parts.append(f"表格: {table_time:.2f}s")
+
+                timing_str = " | ".join(timing_parts)
+                set_title("已完成", timing_str)
+                add_log("- 所有任务已完成")
 
             except Exception as e:
                 logger.error(f"Stream error: {traceback.format_exc()}")
                 answer_container.error("抱歉，处理查询时发生错误。")
-                expander_title.markdown("**处理失败**")
-
-            # === 最终耗时 ===
-            total_time = time.time() - timings["start"]
-            thinking_time = sum(t["time"] for t in timings["tool_times"]) if timings["tool_times"] else 0
-            answer_time = (timings["answer_end"] - timings["answer_start"]) if timings["answer_start"] else 0
-            chart_time = (timings["chart_end"] - timings["chart_start"]) if timings["chart_start"] and timings["chart_end"] else 0
-            table_time = (timings["table_end"] - timings["table_start"]) if timings["table_start"] and timings["table_end"] else 0
-
-            timing_parts = [f"**总耗时:** {total_time:.2f}s"]
-            if thinking_time > 0:
-                timing_parts.append(f"思考: {thinking_time:.2f}s")
-            if answer_time > 0:
-                timing_parts.append(f"回答: {answer_time:.2f}s")
-            if chart_time > 0:
-                timing_parts.append(f"图表: {chart_time:.2f}s")
-            if table_time > 0:
-                timing_parts.append(f"表格: {table_time:.2f}s")
-
-            timing_container.caption(" | ".join(timing_parts))
+                set_title("处理失败")
 
             # === 保存历史 ===
             assistant_message = AIMessage(content=intermediate["answer"])
